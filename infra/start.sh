@@ -1,11 +1,10 @@
 #!/bin/bash
-# Start the unified Little-Coder container (both little-coder and open-terminal)
+# Start the Little-Coder project (little-coder agent + open-terminal services)
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-COMPOSE_FILE="$SCRIPT_DIR/docker-compose.unified.yml"
+COMPOSE_FILE="$SCRIPT_DIR/docker-compose.yml"
 
 if [ ! -f "$SCRIPT_DIR/.env" ]; then
     echo "❌ Error: .env file not found at $SCRIPT_DIR/.env"
@@ -21,20 +20,20 @@ if grep -q "replace-with-long-random-secret" "$SCRIPT_DIR/.env"; then
     exit 1
 fi
 
-echo "🚀 Starting unified Little-Coder container..."
+echo "🚀 Starting Little-Coder project..."
 docker compose -f "$COMPOSE_FILE" up -d
 
 echo ""
-echo "✅ Container started successfully!"
+echo "✅ Services started successfully!"
 echo ""
-echo "📋 Services running in single container:"
-echo "  • little-coder        (Node.js agent) - port 3000 (internal)"
-echo "  • open-terminal       (Uvicorn API)   - port 127.0.0.1:8001"
+echo "📋 Running services:"
+echo "  • little-coder    (Node.js agent)  - internal"
+echo "  • open-terminal   (terminal API)   - http://127.0.0.1:8001"
 echo ""
 echo "🔌 Access:"
 echo "  • Terminal API: curl http://127.0.0.1:8001/api/status"
-echo "  • Logs: docker logs -f little-coder"
-echo "  • Shell: docker exec -it little-coder /bin/bash"
+echo "  • Agent logs:   docker logs -f little-coder"
+echo "  • Terminal logs: docker logs -f open-terminal"
 echo ""
 
 

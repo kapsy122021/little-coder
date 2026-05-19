@@ -1,5 +1,5 @@
 #!/bin/bash
-# Verify security posture of Little-Coder unified container
+# Verify security posture of the Little-Coder project services
 
 set -e
 
@@ -17,13 +17,19 @@ check_result() {
     fi
 }
 
-echo "🔐 Verifying Little-Coder unified container security posture..."
+echo "🔐 Verifying Little-Coder security posture..."
 echo ""
 
-# Check unified container
-echo "Checking little-coder container..."
-if docker ps --filter "name=little-coder" --format "{{.Names}}" | grep -q "little-coder"; then
-    check_result 0 "little-coder unified container is running"
+echo "Checking little-coder (agent)..."
+if docker ps --filter "name=little-coder" --format "{{.Names}}" | grep -q "^little-coder$"; then
+    check_result 0 "little-coder agent is running"
+else
+    echo -e "${YELLOW}⚠${NC} little-coder is not running (OK if not started yet)"
+fi
+
+echo "Checking open-terminal..."
+if docker ps --filter "name=open-terminal" --format "{{.Names}}" | grep -q "^open-terminal$"; then
+    check_result 0 "open-terminal is running"
 else
     echo -e "${YELLOW}⚠${NC} little-coder container is not running (OK if not started yet)"
 fi
@@ -66,12 +72,11 @@ fi
 echo ""
 echo -e "${GREEN}✅ Security verification complete!${NC}"
 echo ""
-echo "Little-Coder unified architecture:"
-echo "  • Single container: little-coder"
-echo "  • Services: little-coder (Node.js) + open-terminal (Uvicorn)"
-echo "  • Managed by: supervisord"
-echo "  • Resource limits: 4GB RAM, 4 CPUs, 512 processes"
-echo "  • Loopback-only external access (port 127.0.0.1:8001)"
-echo "  • Health monitoring: Uvicorn endpoint"
+echo "Little-Coder services:"
+echo "  • little-coder    — Node.js agent (no external port)"
+echo "  • open-terminal   — Terminal API (http://127.0.0.1:8001)"
+echo "  • Shared network: little-coder-net (service discovery via container name)"
+echo "  • Resource limits: 2GB RAM, 2 CPUs, 256 processes per service"
+echo "  • Loopback-only external access (127.0.0.1:8001)"
 
 

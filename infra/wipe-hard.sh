@@ -1,10 +1,10 @@
 #!/bin/bash
-# Hard wipe: destroy container and rebuild for full reset
+# Hard wipe: destroy all Little-Coder services and rebuild from scratch
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-COMPOSE_FILE="$SCRIPT_DIR/docker-compose.unified.yml"
+COMPOSE_FILE="$SCRIPT_DIR/docker-compose.yml"
 
 echo "⚠️  WARNING: This will destroy the Little-Coder container and remove all data."
 echo "Press Ctrl+C to cancel, or wait 5 seconds to continue..."

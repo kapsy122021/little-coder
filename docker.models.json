@@ -1,0 +1,29 @@
+﻿{
+  "providers": {
+    "llamacpp": {
+      "api": "openai-completions",
+      "baseUrl": "http://host.docker.internal:8000/v1",
+      "apiKey": "LLAMACPP_API_KEY",
+      "models": [
+        {
+          "id": "qwen3.6:27b",
+          "name": "Qwen3.6 27B (thinking)",
+          "reasoning": true,
+          "input": ["text"],
+          "contextWindow": 32768,
+          "maxTokens": 4096,
+          "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 }
+        },
+        {
+          "id": "qwen3.6:27b-nothink",
+          "name": "Qwen3.6 27B (no thinking)",
+          "reasoning": false,
+          "input": ["text"],
+          "contextWindow": 32768,
+          "maxTokens": 4096,
+          "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 }
+        }
+      ]
+    }
+  }
+}

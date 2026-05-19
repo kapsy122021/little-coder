@@ -1,162 +1,143 @@
 # Initial Setup QoL Improvements
 
-Challenges a new developer faces when cloning little-coder and trying to get it up and running, organized by category.
+Challenges a new developer faces when cloning little-coder and trying to get it up and running via the Docker Compose workflow, organized by category.
 
 ---
 
-## 1. Node.js Version Requirement
+## 1. Docker Prerequisites Are Assumed, Not Checked
 
-**What:** Node.js ≥ 22.19.0 is required (hard minimum, enforced at install time).
+**What:** The entire workflow assumes Docker and Docker Compose are installed and functional.
 
-**Why:** The bundled dependency `@earendil-works/pi-coding-agent` v0.75+ requires it. The install script checks the version and exits with an error if too old. Many developers have older LTS versions (e.g., 18.x or 20.x) and won't realize the constraint until install fails.
+**Why:** There's no pre-flight check script that validates Docker availability before the user runs `docker compose up`. A developer who hasn't installed Docker, or whose user isn't in the `docker` group, will hit opaque permission errors or "command not found" with no guidance on how to fix it.
 
-**Fix:** `nvm install 22 && nvm use 22` — but this isn't obvious from the error message alone.
-
----
-
-## 2. npm Global Install Permissions
-
-**What:** `npm install -g little-coder` may fail with `EACCES` if the npm global prefix isn't user-writable.
-
-**Why:** The install script and README both default to global install. On macOS (Homebrew Node) and many Linux distros, the global prefix is `/usr/local` or `/opt/homebrew`, which requires `sudo`. The README mentions this in Troubleshooting but not inline in the install section.
-
-**Fix:** `sudo npm install -g little-coder` or configure a user-writable npm prefix — but the developer has to discover this after the first failure.
+**Improvement:** Add a `infra/check-prereqs.sh` that validates Docker, Docker Compose, and user group membership before anything else.
 
 ---
 
-## 3. bun Users Still Need Node
+## 2. Local LLM Setup Is a Hard Prerequisite With No Guidance
 
-**What:** Even if you install via `bun add -g little-coder`, the launcher script has `#!/usr/bin/env node` — Node 22.19+ must still be on PATH at runtime.
+**What:** The Docker stack expects a local LLM server reachable at `host.docker.internal:8000` (default `LLAMACPP_BASE_URL`). The user is responsible for setting this up independently.
 
-**Why:** The README mentions this in a footnote, but it's easy to miss. A developer who installed bun specifically to avoid Node will be confused when the binary won't start.
+**Why:** The README documents llama.cpp, Ollama, and LM Studio as options, but none of them default to port 8000. A developer who follows the README's llama.cpp example (port 8888) or Ollama (port 11434) will get `ECONNREFUSED` from inside the container with no clear path to resolution.
 
----
-
-## 4. Choosing a Model Provider (Three Paths, Each Complex)
-
-**What:** The developer must pick a model provider and set it up before little-coder can do anything useful. There are three options, each with its own friction:
-
-### Option A — llama.cpp (Recommended but Hardest)
-
-- Requires building from source with CMake + CUDA
-- Must know your GPU architecture (`sm_XXX` / `DCMAKE_CUDA_ARCHITECTURES`)
-- Must download a ~22 GB GGUF model + a ~900 MB vision projector
-- Requires `huggingface_hub[cli]` (pip install)
-- The MoE serving trick (`--n-cpu-moe 999 -ngl 99`) is non-obvious and undocumented outside the README
-- If you skip the vision projector, image attachment silently 4xxs
-
-### Option B — Ollama (Simpler but Slower on MoE)
-
-- One-line install + `ollama pull`, but the README says it's "slower on MoE" without quantifying how much slower
-- The model IDs in `models.json` don't match Ollama's naming (`qwen3.5` vs `qwen3.6-35b-a3b`)
-
-### Option C — LM Studio (GUI, Easiest)
-
-- Requires downloading the GUI app, loading a model, starting the server manually
-- The `lmstudio/local-model` id is a magic routing key that may confuse developers
+**Improvement:** Add a prominent "Before You Start" section that explicitly calls out the LLM requirement and shows how to point the container at whatever port the user's LLM is actually running on.
 
 ---
 
-## 5. API Key Environment Variables (Even for Local Models)
+## 3. Changing the LLM URL Requires Editing Two Files
 
-**What:** Local providers (llama.cpp, Ollama, LM Studio) require a dummy API key env var (`LLAMACPP_API_KEY=noop`).
+**What:** The `LLAMACPP_BASE_URL` is hardcoded in `infra/docker-compose.yml` as `http://host.docker.internal:8000/v1`. To change it, the user must edit the compose file directly.
 
-**Why:** pi's provider abstraction expects *some* key value even though local servers ignore it. Without it, you get a confusing "no API key" warning. This is counterintuitive — why does a local server need an API key?
+**Why:** The `.env.example` file doesn't expose `LLAMACPP_BASE_URL` as an overridable variable. A developer who runs their LLM on a non-default port (e.g., 8888 for llama.cpp, 11434 for Ollama) must dig into the compose file to find the hardcoded value.
 
----
-
-## 6. Docker Deployment Complexity
-
-**What:** The `infra/` directory provides a Docker Compose stack that runs the agent and an "open-terminal" workspace container as separate services.
-
-**Why it's complex:**
-
-- Requires Docker + Docker Compose installed
-- Requires generating an `OPEN_TERMINAL_API_KEY` (hex secret)
-- The `.env` file must be created from `.env.example` (not done automatically)
-- `start.sh` validates the `.env` and will refuse to start if the key is still the placeholder
-- The agent container depends on `host.docker.internal:8000` resolving to a llama-ingress-proxy on the host — this is an external dependency not documented as a prerequisite
-- `host.docker.internal` requires `extra_hosts` on Linux Docker (handled in compose, but easy to break if customizing)
-- Resource limits (2g RAM, 2 CPUs, 256 pids) may be too low for some workloads
-- The open-terminal container image (`ghcr.io/open-webui/open-terminal:slim`) must be pulled
+**Improvement:** Move `LLAMACPP_BASE_URL` into `.env.example` so the user can change it in one place without touching the compose file.
 
 ---
 
-## 7. Model Configuration Confusion
+## 4. `.env` File Must Be Manually Created
 
-**What:** There are three layers of model configuration that interact:
+**What:** The `.env` file is not committed (it's in `.gitignore`). The user must copy `.env.example` to `.env` and fill in values.
 
-1. `models.json` — shipped provider registration (what models exist)
-2. `.pi/settings.json` — per-model profiles (context limits, thinking budget, temperature)
-3. `docker.models.json` — Docker-specific model list (only `qwen3.6:27b` variants)
+**Why:** `start.sh` checks for `.env` and exits with an error if it's missing. The error message says "Please create .env with OPEN_TERMINAL_API_KEY set" but doesn't mention the `cp` command. A new developer may not know they need to copy the example file.
 
-**Why it's confusing:**
-
-- The shipped `models.json` only declares `llamacpp` with `qwen3.6:27b` models, but the README examples use `qwen3.6-35b-a3b` — a model ID that exists in `.pi/settings.json` profiles but **not** in `models.json`
-- User override files (`~/.config/little-coder/models.json`) use per-provider replace semantics, not deep merge — easy to accidentally wipe out providers
-- `LLAMACPP_BASE_URL` env var overrides both files, but the default port differs between `models.json` (8000) and the README examples (8888)
+**Improvement:** Have `start.sh` auto-generate `.env` from `.env.example` if it doesn't exist, or add a one-liner to the README's quick-start section.
 
 ---
 
-## 8. Extension System Opacity
+## 5. OPEN_TERMINAL_API_KEY Generation Is Buried
 
-**What:** little-coder ships 24 TypeScript extensions under `.pi/extensions/` that hook into pi's lifecycle events.
+**What:** The `OPEN_TERMINAL_API_KEY` is required but the generation command (`openssl rand -hex 32`) is buried in comments inside `.env.example`.
 
-**Why it's a challenge:**
+**Why:** A developer opening `.env.example` sees `your-generated-random-hex-key-here` and may not notice the comment above it telling them how to generate one. They might paste the placeholder literally, which `start.sh` will reject.
 
-- Extensions are auto-discovered by pi — a developer won't know what's running unless they read the source
-- The `open-terminal-workspace` extension blocks all built-in tools (Read/Write/Edit/Bash) when `LITTLE_CODER_USE_OPEN_TERMINAL=1` — this is invisible to the developer until they see the error message
-- Extensions can be disabled via `.pi/settings.json`, but the format isn't documented
-- TypeScript extensions are not compiled/bundled — they're loaded directly by pi, which means TypeScript errors surface at runtime
+**Improvement:** Generate the key automatically in `start.sh` if the `.env` value is still the placeholder, or add a prominent callout in the quick-start guide.
 
 ---
 
-## 9. Benchmark Harness Dependencies
+## 6. GitHub PAT Has No Clear Injection Path
 
-**What:** Running benchmarks requires a Python environment with specific dependencies that aren't declared in a `requirements.txt`.
+**What:** The `.env.example` has a commented-out `GITHUB_TOKEN` line, but there's no mechanism to inject it into the running containers.
 
-**Why it's a challenge:**
+**Why:** A developer who wants the agent to clone/push repos will add `GITHUB_TOKEN=ghp_xxx` to `.env`, but the compose file doesn't pass it through to either container. The token sits in `.env` unused.
 
-- `benchmarks/rpc_client.py` spawns `pi --mode rpc` as a subprocess — requires `npm install` in the repo root first
-- `benchmarks/aider_polyglot.py` expects a polyglot benchmark checkout at `~/Documents/polyglot-benchmark`
-- `benchmarks/tb_pilot.sh` expects a terminal-bench checkout at `~/Documents/terminal-bench`
-- `benchmarks/harbor_pilot.sh` requires `harbor` installed via `uv tool install harbor`
-- Docker access is required for Terminal-Bench runs (user must be in `docker` group or use `sg docker`)
-- No `requirements.txt` or `pyproject.toml` for Python dependencies — they're assumed to be installed
+**Improvement:** Add `GITHUB_TOKEN` to the `environment:` blocks in `docker-compose.yml` so it flows through automatically when the user sets it in `.env`.
 
 ---
 
-## 10. Permission Gate Configuration
+## 7. No Single "Quick Start" Command
 
-**What:** The `permission-gate` extension blocks bash commands not on a whitelist. `rm` and `sudo` are intentionally excluded.
+**What:** Getting from clone to "agent running" requires: (1) set up a local LLM, (2) copy `.env.example` to `.env`, (3) generate an API key, (4) run `start.sh`, (5) `docker exec` into the agent container.
 
-**Why it's a challenge:**
+**Why:** Each step is documented somewhere in the repo, but no single place walks through the full sequence. A developer has to piece together instructions from the README, `infra/README.md`, and `start.sh` output.
 
-- A developer trying to do real work will hit unexpected command rejections
-- The `LITTLE_CODER_BASH_ALLOW` env var and trailing-whitespace semantics (`"make "` vs `"make"`) are subtle
-- The `LITTLE_CODER_PERMISSION_MODE` env var (`auto` / `accept-all` / `manual`) isn't mentioned until deep in the README
-- Benchmark runners set `accept-all`, but interactive use defaults to `auto`
+**Improvement:** Add a numbered "5-Minute Quick Start" section to the top-level README that covers the full Docker workflow end-to-end.
 
 ---
 
-## 11. LAN / Remote Inference Setup
+## 8. Model Mismatch Between Docker and README Examples
 
-**What:** Serving the model on a different machine requires firewall configuration, `host.docker.internal` resolution, and provider-specific binding changes.
+**What:** `docker.models.json` declares `qwen3.6:27b` and `qwen3.6:27b-nothink`, but the README and `start.sh` output reference `qwen3.6-35b-a3b` and `qwen3.6:27b`.
 
-**Why it's a challenge:**
+**Why:** A developer who copies the README command `little-coder --model llamacpp/qwen3.6-35b-a3b` into the Docker container will get a "model not found" error because that ID isn't registered in `docker.models.json`.
 
-- `ufw` / `firewalld` default-deny policies silently drop connections (no RST, just hangs)
-- Each provider has different flags for LAN binding (`--host 0.0.0.0`, `OLLAMA_HOST`, LM Studio GUI toggle)
-- The README documents this but it's buried deep in the "Local model setup" section
+**Improvement:** Align model IDs across `docker.models.json`, `.pi/settings.json`, the README, and `start.sh` output. Or document the discrepancy explicitly.
 
 ---
 
-## 12. No Quick Start for "Just Try It"
+## 9. Resource Limits May Be Too Restrictive
 
-**What:** There's no single command that gets a developer from zero to "the agent is working" without already having a model server running.
+**What:** Both containers are capped at 2g RAM, 2 CPUs, and 256 pids.
 
-**Why it's a challenge:**
+**Why:** The agent container runs Node.js + TypeScript extensions + pi's agent loop. 2g may be tight for large context windows (122880 tokens configured for `qwen3.6:27b`). The open-terminal container running long shell commands may hit the pid limit.
 
-- The install step and the model setup step are separate, and the model setup is the hard part
-- A developer who just wants to test the TUI will install little-coder, run it, and immediately get `ECONNREFUSED` because no model is running
-- There's no built-in demo mode or fallback model
+**Improvement:** Expose resource limits as `.env` variables so users can tune them without editing the compose file.
+
+---
+
+## 10. No Health Check or Readiness Signal
+
+**What:** `start.sh` runs `docker compose up -d` and immediately prints "Services started successfully!" with no verification that the containers are actually healthy.
+
+**Why:** The agent container may still be building or initializing. A developer who immediately `docker exec` into it may hit a "command not found" or connection error because the container isn't ready yet.
+
+**Improvement:** Add a health check to the compose file and have `start.sh` wait for both containers to report healthy before printing the success message.
+
+---
+
+## 11. Extension System Is Invisible to the End User
+
+**What:** 24 TypeScript extensions auto-load at runtime. The `open-terminal-workspace` extension blocks all built-in tools when `LITTLE_CODER_USE_OPEN_TERMINAL=1`.
+
+**Why:** A developer who runs the agent and tries to use `Read` or `Bash` will see a cryptic error message redirecting them to `OTRead`/`OTBash`. They won't understand why the standard tools are blocked unless they read the extension source.
+
+**Improvement:** Add a startup banner or log message that explains which tools are available and why, especially when the open-terminal workspace mode is active.
+
+---
+
+## 12. No Way to Verify the Stack Is Working Before Running the Agent
+
+**What:** There's no smoke test or connectivity check between the agent container, the open-terminal container, and the host LLM.
+
+**Why:** A developer might spend 20 minutes debugging why the agent won't start, only to discover their LLM server isn't running, or the port is wrong, or the firewall is blocking it.
+
+**Improvement:** Add a `infra/healthcheck.sh` that verifies: (1) both containers are running, (2) the agent can reach open-terminal, (3) the agent can reach the LLM at `LLAMACPP_BASE_URL`.
+
+---
+
+## 13. Docker Build Happens on Every Start (First Time Is Slow)
+
+**What:** The `little-coder` service uses `build: context: ../` which rebuilds the image on every `docker compose up`.
+
+**Why:** The first build installs all npm dependencies and copies the entire repo. On a slow machine or network, this can take several minutes with no progress indication.
+
+**Improvement:** Use `docker compose up -d --build` only when needed, or add a `infra/build.sh` that pre-builds the image with a clear progress message.
+
+---
+
+## 14. No Documentation of the Container-to-Host Network Path
+
+**What:** The agent reaches the host LLM via `host.docker.internal`, which is a Docker-specific DNS name.
+
+**Why:** A developer who changes the compose file or runs Docker in an unusual configuration (e.g., rootless Docker, Podman) may find that `host.docker.internal` doesn't resolve. The `extra_hosts` workaround is documented in a comment but not in any user-facing guide.
+
+**Improvement:** Document the network topology in a diagram and explain how `host.docker.internal` works, including alternatives for non-standard Docker setups.

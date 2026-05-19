@@ -1,0 +1,56 @@
+services:
+  open-terminal:
+    image: ghcr.io/open-webui/open-terminal:slim
+    container_name: open-terminal
+    restart: unless-stopped
+    # Bind only on host loopback to avoid LAN exposure
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      OPEN_TERMINAL_API_KEY: ${OPEN_TERMINAL_API_KEY}
+      OPEN_TERMINAL_MULTI_USER: "false"
+    # Strict wipe by default: no persistent volume mounted.
+    # If you need persistence, see "Persistent Variant" below.
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m,noexec,nosuid,nodev
+      - /run:size=64m,nosuid,nodev
+      - /home/user:size=4g,nosuid,nodev
+    networks:
+      - ot-net
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+      - seccomp=default
+    pids_limit: 256
+    mem_limit: 2g
+    cpus: 2
+
+  little-coder:
+    image: your-little-coder-image:latest
+    container_name: little-coder
+    restart: unless-stopped
+    stdin_open: true
+    tty: true
+    # Keep this isolated from open-terminal by default.
+    networks:
+      - lc-net
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m,noexec,nosuid,nodev
+      - /run:size=64m,nosuid,nodev
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+      - seccomp=default
+    pids_limit: 256
+    mem_limit: 2g
+    cpus: 2
+
+networks:
+  ot-net:
+    driver: bridge
+  lc-net:
+    driver: bridge

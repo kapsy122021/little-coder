@@ -1,0 +1,5 @@
+# Environment variables with secrets
+.env
+
+# Docker artifacts
+docker-compose.override.yml

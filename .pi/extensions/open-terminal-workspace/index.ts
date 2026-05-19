@@ -122,7 +122,7 @@ export default function (pi: ExtensionAPI) {
       "Supports chaining (&&, ||, ;), pipes (|), redirections. Returns stdout, stderr, exit_code.",
     parameters: Type.Object({
       command: Type.String({ description: "Shell command to execute." }),
-      cwd: Type.Optional(Type.String({ description: "Working directory (default: server cwd)." })),
+      cwd: Type.Optional(Type.String({ description: "Working directory (default: /home/user)." })),
       timeout: Type.Optional(
         Type.Integer({ description: "Seconds to wait for completion (default 30)." }),
       ),
@@ -130,18 +130,18 @@ export default function (pi: ExtensionAPI) {
     async execute(_id, { command, cwd, timeout }) {
       if (!command || typeof command !== "string") return errorResult("Error: command is required");
       const wait = typeof timeout === "number" && timeout > 0 ? timeout : 30;
-      const body: Record<string, unknown> = { command };
-      if (cwd) body.cwd = cwd;
+      // Default cwd to /home/user — the server's own /app dir is owned by root (no write access).
+      const body: Record<string, unknown> = { command, cwd: cwd || "/home/user" };
       try {
         const res: any = await otFetch(`/execute?wait=${wait}`, {
           method: "POST",
           body: JSON.stringify(body),
         });
-        const parts: string[] = [];
-        if (res?.stdout) parts.push(`stdout:\n${res.stdout}`);
-        if (res?.stderr) parts.push(`stderr:\n${res.stderr}`);
-        parts.push(`exit_code: ${res?.exit_code ?? "?"}`);
-        const out = parts.join("\n\n");
+        // open-terminal returns output as [{type, data}] array, not stdout/stderr fields.
+        const combined: string = Array.isArray(res?.output)
+          ? res.output.map((o: any) => String(o.data ?? "")).join("")
+          : (res?.stdout ?? "") + (res?.stderr ? `\nstderr: ${res.stderr}` : "");
+        const out = `${combined.trimEnd()}\nexit_code: ${res?.exit_code ?? "?"}`;
         return (res?.exit_code ?? 0) === 0 ? textResult(out) : errorResult(out);
       } catch (e: any) {
         return errorResult(`OTBash error: ${e?.message ?? e}`);

@@ -7,11 +7,20 @@ services:
       dockerfile: Dockerfile
     container_name: little-coder
     restart: unless-stopped
-    stdin_open: true
-    tty: true
     environment:
+      # --- Route ALL file/shell tools to the open-terminal container ---
+      LITTLE_CODER_USE_OPEN_TERMINAL: "1"
       OPEN_TERMINAL_URL: http://open-terminal:8000
       OPEN_TERMINAL_API_KEY: ${OPEN_TERMINAL_API_KEY}
+      # --- Lock model provider to llama-ingress-proxy on the host ---
+      # docker.models.json declares only qwen3.6:27b and qwen3.6:27b-nothink.
+      LITTLE_CODER_MODELS_FILE: /app/docker.models.json
+      LLAMACPP_BASE_URL: http://host.docker.internal:8000/v1
+      LLAMACPP_API_KEY: ${LLAMACPP_API_KEY:-noop}
+    extra_hosts:
+      # Required so `host.docker.internal` resolves on Linux engines;
+      # harmless on Docker Desktop where it resolves natively.
+      - "host.docker.internal:host-gateway"
     networks:
       - little-coder-net
     pids_limit: 256

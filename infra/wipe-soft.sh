@@ -1,9 +1,12 @@
 #!/bin/bash
-# Soft wipe: clear project workspace while preserving tools and caches
+# Soft wipe: clear the open-terminal workspace while preserving tools and caches.
+# The workspace lives in the open-terminal container (that's what little-coder
+# operates against via the OT* tools); little-coder's own filesystem is read-only
+# from the agent's perspective and never holds project work.
 
 set -e
 
-CONTAINER_NAME="little-coder"
+CONTAINER_NAME="open-terminal"
 
 if ! docker ps --filter "name=$CONTAINER_NAME" --format "{{.Names}}" | grep -q "^${CONTAINER_NAME}$"; then
     echo "❌ Error: Container '$CONTAINER_NAME' is not running."

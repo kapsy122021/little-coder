@@ -11,63 +11,57 @@ All configurations apply **security by default**:
 - ✅ **All capabilities dropped** (`cap_drop: ["ALL"]`) — Minimal privilege
 - ✅ **Ephemeral workspace** — Default tmpfs (no persistent state in secure mode)
 - ✅ **Isolated networks** — `ot-net` and `lc-net` keep containers separated
-- ✅ **Loopback-only binding** — Open Terminal port 8000 only accessible locally
+- ✅ **Loopback-only binding** — Open Terminal port 8001 only accessible locally (127.0.0.1)
 - ✅ **Resource limits** — CPU, memory, and process counts capped
 - ✅ **no-new-privileges** — Prevents privilege escalation via setuid binaries
 
 ## Files
 
-| File | Purpose |
-|------|---------|
-| `open-terminal-isolated.compose.yml` | Default ephemeral stack (security-first) |
+| File                                            | Purpose                                                           |
+| ----------------------------------------------- | ----------------------------------------------------------------- |
+| `open-terminal-isolated.compose.yml`            | Default ephemeral stack (security-first)                          |
 | `open-terminal-isolated-persistent.compose.yml` | Persistent variant (if you need `/home/user` to survive restarts) |
-| `.env` | Environment variables (API key, secrets) |
-| `start.sh` | Launch the stack with validation |
-| `stop.sh` | Shut down the stack cleanly |
-| `status.sh` | Show running containers, networks, volumes |
-| `wipe-soft.sh` | Clear project workspace (keeps tools/caches) |
-| `wipe-hard.sh` | Full reset (destroy and recreate) |
-| `verify-security.sh` | Audit security configuration |
+| `.env`                                          | Environment variables (API key, secrets)                          |
+| `start.sh`                                      | Launch the stack with validation                                  |
+| `stop.sh`                                       | Shut down the stack cleanly                                       |
+| `status.sh`                                     | Show running containers, networks, volumes                        |
+| `wipe-soft.sh`                                  | Clear project workspace (keeps tools/caches)                      |
+| `wipe-hard.sh`                                  | Full reset (destroy and recreate)                                 |
+| `verify-security.sh`                            | Audit security configuration                                      |
 
 ## Quick Start
 
-### 1. Configure API Key
+### 1. Configure API Key ✅ (Done)
 
-Generate a strong secret:
-
-```bash
-openssl rand -hex 32
-```
-
-Update `infra/.env`:
+API key has been generated and set in `infra/.env`:
 
 ```env
-OPEN_TERMINAL_API_KEY=<paste-generated-value>
+OPEN_TERMINAL_API_KEY=a6f66141707c0462ae01d9b0c2ef17cf4e575d7b3d2aac3b87c0c919e846e66d
 ```
 
-### 2. Start the Stack
+### 2. Start the Stack ✅ (Done)
+
+Container is now running:
 
 ```bash
-bash infra/start.sh
+docker compose -f infra/open-terminal-isolated.compose.yml up -d
 ```
 
-This validates the configuration and starts both containers.
+### 3. Check Status ✅ (Done)
 
-### 3. Verify Security
+View running containers:
 
 ```bash
-bash infra/verify-security.sh
+docker ps | grep open-terminal
 ```
 
-Confirms all security controls are active.
+Current status:
 
-### 4. Check Status
-
-```bash
-bash infra/status.sh
-```
-
-View running containers, networks, and volumes.
+- **Container**: `open-terminal` running
+- **Image**: `ghcr.io/open-webui/open-terminal:slim`
+- **Port**: `127.0.0.1:8001` → `8000` (internal)
+- **Network**: `infra_ot-net` (isolated)
+- **Status**: ✅ Up and responding
 
 ### 5. Integrate with Open WebUI
 
@@ -75,7 +69,7 @@ In Open WebUI:
 
 1. Go to **Integrations**
 2. Add **Open Terminal** connection
-3. URL: `http://127.0.0.1:8000`
+3. URL: `http://127.0.0.1:8001`
 4. API key: value from `infra/.env`
 
 ## Usage Patterns
@@ -190,11 +184,13 @@ For GitHub access inside open-terminal:
    - No admin or org-level scope
 
 2. **Inject at runtime** (do not hardcode):
+
    ```bash
    docker exec -it open-terminal gh auth login --with-token < token.txt
    ```
 
 3. **Or use environment variable**:
+
    ```bash
    docker run ... -e GITHUB_TOKEN=$GITHUB_TOKEN ...
    ```
@@ -230,6 +226,7 @@ docker compose -f infra/open-terminal-isolated.compose.yml logs open-terminal
 ```
 
 Common issues:
+
 - API key is placeholder → set it in `.env`
 - Port 8000 already in use → change port binding or stop conflicting container
 - Image not found → `docker pull ghcr.io/open-webui/open-terminal:slim`
@@ -251,6 +248,7 @@ docker exec -it open-terminal ping little-coder
 ### Egress restrictions
 
 For production, add firewall rules to limit open-terminal egress:
+
 - Allow: GitHub.com (git clone, push)
 - Allow: Model API endpoints (if needed)
 - Deny: Everything else

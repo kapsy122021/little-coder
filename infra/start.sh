@@ -1,11 +1,11 @@
 #!/bin/bash
-# Start the isolated open-terminal and little-coder stack with security defaults
+# Start the unified Little-Coder container (both little-coder and open-terminal)
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-COMPOSE_FILE="$SCRIPT_DIR/open-terminal-isolated.compose.yml"
+COMPOSE_FILE="$SCRIPT_DIR/docker-compose.unified.yml"
 
 if [ ! -f "$SCRIPT_DIR/.env" ]; then
     echo "❌ Error: .env file not found at $SCRIPT_DIR/.env"
@@ -21,25 +21,20 @@ if grep -q "replace-with-long-random-secret" "$SCRIPT_DIR/.env"; then
     exit 1
 fi
 
-echo "🚀 Starting isolated open-terminal and little-coder stack..."
+echo "🚀 Starting unified Little-Coder container..."
 docker compose -f "$COMPOSE_FILE" up -d
 
 echo ""
-echo "✅ Stack started successfully!"
+echo "✅ Container started successfully!"
 echo ""
-echo "📋 Next steps:"
-echo "  1. Configure Open WebUI integration:"
-echo "     - Go to Integrations"
-echo "     - Add Open Terminal connection"
-echo "     - URL: http://127.0.0.1:8000"
-echo "     - API key: (value from infra/.env)"
+echo "📋 Services running in single container:"
+echo "  • little-coder        (Node.js agent) - port 3000 (internal)"
+echo "  • open-terminal       (Uvicorn API)   - port 127.0.0.1:8001"
 echo ""
-echo "  2. Start using open-terminal:"
-echo "     - Clone repositories"
-echo "     - Create branches"
-echo "     - Implement changes"
+echo "🔌 Access:"
+echo "  • Terminal API: curl http://127.0.0.1:8001/api/status"
+echo "  • Logs: docker logs -f little-coder"
+echo "  • Shell: docker exec -it little-coder /bin/bash"
 echo ""
-echo "  3. After each project, wipe workspace:"
-echo "     ./infra/wipe-soft.sh   # Keep tools, remove project files"
-echo "     ./infra/wipe-hard.sh   # Full reset"
-echo ""
+
+

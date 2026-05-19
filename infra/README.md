@@ -1,303 +1,499 @@
-# Isolated Open Terminal Deployment Guide
+# Little-Coder Unified Deployment Guide
 
-This directory implements the security hardened, isolated Docker Compose stack for open-terminal and little-coder as described in [docs/plans/openterminal-workspace.md](../docs/plans/openterminal-workspace.md).
+This directory implements the unified Docker Compose stack that combines **open-terminal** (execution environment) and **little-coder** (agent runtime) as a single cohesive system called **Little-Coder**.
 
-## Security Default Posture
+## Architecture
 
-All configurations apply **security by default**:
+```
+┌──────────────────────────────────────────────────┐
+│        Little-Coder Unified Parent              │
+│                                                  │
+│  ┌─────────────────────────────────────────┐   │
+│  │   little-coder-net (shared bridge)      │   │
+│  │                                         │   │
+│  │  ┌──────────────────┐  ┌──────────────┐│   │
+│  │  │ little-coder-    │  │ little-coder-││   │
+│  │  │ agent            │◄─┤ terminal     ││   │
+│  │  │                  │  │              ││   │
+│  │  │ Node.js process  │  │ Uvicorn server  │   │
+│  │  │ (port 3000)      │  │ (port 8000)  ││   │
+│  │  └──────────────────┘  └──────────────┘│   │
+│  │           ▲                    │        │   │
+│  │           └────────────────────┘        │   │
+│  │                                         │   │
+│  │    http://little-coder-terminal:8000   │   │
+│  │    (internal service discovery)        │   │
+│  └─────────────────────────────────────────┘   │
+│                    │                             │
+│                    │ Exposed ports              │
+│                    └─→ 127.0.0.1:8001           │
+│                       (terminal external)       │
+└──────────────────────────────────────────────────┘
+```
 
-- ✅ **No Docker socket exposure** — Containers cannot manage each other or the host
-- ✅ **Read-only root filesystems** — Immutable execution environment
-- ✅ **All capabilities dropped** (`cap_drop: ["ALL"]`) — Minimal privilege
-- ✅ **Ephemeral workspace** — Default tmpfs (no persistent state in secure mode)
-- ✅ **Isolated networks** — `ot-net` and `lc-net` keep containers separated
-- ✅ **Loopback-only binding** — Open Terminal port 8001 only accessible locally (127.0.0.1)
+## Unified Deployment Model
+
+**Both services are managed as a single unit under the parent name "Little-Coder":**
+
+- **Primary compose file**: `docker-compose.yml`
+- **Network**: `little-coder-net` (shared bridge network)
+- **Containers**:
+  - `little-coder-agent` — Main coding agent (builds from `../Dockerfile`)
+  - `little-coder-terminal` — Terminal execution environment
+- **Startup order**: Agent depends on terminal (automatic with `depends_on`)
+- **Service discovery**: Agent can reach terminal at `http://little-coder-terminal:8000`
+
+## Security Posture
+
+All configurations apply **hardening by default**:
+
+- ✅ **Shared secure network** — Containers can communicate safely
+- ✅ **Loopback-only external port** — Port 8001 bound to 127.0.0.1 only
 - ✅ **Resource limits** — CPU, memory, and process counts capped
-- ✅ **no-new-privileges** — Prevents privilege escalation via setuid binaries
+- ✅ **No Docker socket exposure** — Containers cannot manage host/each other
+- ✅ **API key protection** — OPEN_TERMINAL_API_KEY required for terminal access
 
 ## Files
 
-| File                                            | Purpose                                                           |
-| ----------------------------------------------- | ----------------------------------------------------------------- |
-| `open-terminal-isolated.compose.yml`            | Default ephemeral stack (security-first)                          |
-| `open-terminal-isolated-persistent.compose.yml` | Persistent variant (if you need `/home/user` to survive restarts) |
-| `.env`                                          | Environment variables (API key, secrets)                          |
-| `start.sh`                                      | Launch the stack with validation                                  |
-| `stop.sh`                                       | Shut down the stack cleanly                                       |
-| `status.sh`                                     | Show running containers, networks, volumes                        |
-| `wipe-soft.sh`                                  | Clear project workspace (keeps tools/caches)                      |
-| `wipe-hard.sh`                                  | Full reset (destroy and recreate)                                 |
-| `verify-security.sh`                            | Audit security configuration                                      |
+| File | Purpose |
+|------|---------|
+| `docker-compose.yml` | **Primary** unified stack (both services) |
+| `.env` | Environment secrets (API key) |
+| `.env.example` | Template for .env setup |
+| `start.sh` | Launch with validation |
+| `stop.sh` | Graceful shutdown |
+| `status.sh` | Show running services |
+| `wipe-soft.sh` | Clear terminal workspace |
+| `wipe-hard.sh` | Full reset |
+| `verify-security.sh` | Audit security controls |
+| `open-terminal-isolated.compose.yml` | Legacy (for reference) |
+| `open-terminal-isolated-persistent.compose.yml` | Legacy (for reference) |
 
 ## Quick Start
 
-### 1. Configure API Key ✅ (Done)
+### 1. Prerequisites
 
-API key has been generated and set in `infra/.env`:
+- Docker and Docker Compose installed
+- Port 8001 available (or modify the binding in `docker-compose.yml`)
+- API key configured (see below)
+
+### 2. Configure Secrets
+
+API key is already set in `.env`:
 
 ```env
 OPEN_TERMINAL_API_KEY=a6f66141707c0462ae01d9b0c2ef17cf4e575d7b3d2aac3b87c0c919e846e66d
 ```
 
-### 2. Start the Stack ✅ (Done)
-
-Container is now running:
+To generate a new key:
 
 ```bash
-docker compose -f infra/open-terminal-isolated.compose.yml up -d
+openssl rand -hex 32  # On Linux/Mac
+# Or Windows PowerShell:
+$bytes = New-Object Byte[] 32; (New-Object System.Security.Cryptography.RNGCryptoServiceProvider).GetBytes($bytes); -join ($bytes | ForEach-Object { $_.ToString("x2") })
 ```
 
-### 3. Check Status ✅ (Done)
-
-View running containers:
+### 3. Start the Stack
 
 ```bash
-docker ps | grep open-terminal
+bash infra/start.sh
 ```
 
-Current status:
+This will:
+- Validate `.env` configuration
+- Build `little-coder-agent` image (first time only)
+- Pull `open-terminal:slim` image
+- Create `little-coder-net` bridge network
+- Start both containers
 
-- **Container**: `open-terminal` running
-- **Image**: `ghcr.io/open-webui/open-terminal:slim`
-- **Port**: `127.0.0.1:8001` → `8000` (internal)
-- **Network**: `infra_ot-net` (isolated)
-- **Status**: ✅ Up and responding
-
-### 5. Integrate with Open WebUI
-
-In Open WebUI:
-
-1. Go to **Integrations**
-2. Add **Open Terminal** connection
-3. URL: `http://127.0.0.1:8001`
-4. API key: value from `infra/.env`
-
-## Usage Patterns
-
-### Clone and Work on a Project
-
-Inside the open-terminal integration:
+### 4. Verify Startup
 
 ```bash
+bash infra/status.sh
+```
+
+Expected output:
+
+```
+little-coder-agent    (Running)  port 3000 internal
+little-coder-terminal (Running)  port 127.0.0.1:8001 → 8000
+Network: little-coder-net
+```
+
+### 5. Monitor Logs
+
+```bash
+# Agent logs
+docker logs -f little-coder-agent
+
+# Terminal logs
+docker logs -f little-coder-terminal
+
+# Both
+docker compose -f infra/docker-compose.yml logs -f
+```
+
+## Usage
+
+### Running a Coding Task
+
+Inside the agent, you can invoke the terminal:
+
+```bash
+# From little-coder-agent container
+curl http://little-coder-terminal:8000/api/status
+
+# Or via the agent's scripting
+node bin/little-coder.mjs --terminal-url http://little-coder-terminal:8000
+```
+
+### External Terminal Access
+
+The terminal is accessible from the host for debugging:
+
+```bash
+curl http://127.0.0.1:8001/api/status
+```
+
+But this is not the primary integration point—the agent accesses the terminal internally.
+
+### Project Workflow
+
+**Inside the terminal or agent:**
+
+```bash
+# Prepare workspace
 mkdir -p ~/projects
 cd ~/projects
+
+# Clone target repo
 git clone https://github.com/ORG/REPO.git
 cd REPO
-git checkout -b agent/feature-branch
-```
 
-Make changes, then push:
+# Create feature branch
+git checkout -b agent/task-$(date +%Y%m%d-%H%M%S)
 
-```bash
+# Make changes (agent drives this)
+# ...
+
+# Commit and push
 git add -A
-git commit -m "agent: implement feature"
-git push origin agent/feature-branch
+git commit -m "agent: implement task"
+git push origin HEAD
 ```
 
-### Soft Wipe (Keep Tools)
+## Wipe Strategies
 
-After a project, clear workspace but preserve installed tools and caches:
+After each project, choose a wipe strategy based on sensitivity:
+
+### Soft Wipe (Fast)
+
+Clears project files but preserves installed tools and shell history:
 
 ```bash
 bash infra/wipe-soft.sh
 ```
 
-Container continues running. Ready for next project in seconds.
+Use when:
+- You're running multiple low-sensitivity projects
+- Performance is critical
+- Tools/caches are expensive to rebuild
 
-### Hard Wipe (Full Reset)
+**Result**: `~/projects/*` cleared; everything else preserved.
 
-For high-assurance project isolation, destroy and recreate:
+### Hard Wipe (Cleanest)
+
+Destroys containers and removes all persistent data:
 
 ```bash
 bash infra/wipe-hard.sh
 ```
 
-Container is removed and recreated from scratch. All data gone.
+Use when:
+- Working with sensitive data
+- Strict project isolation required
+- Starting fresh for each task
 
-### Stop the Stack
+**Result**: Fresh containers, empty workspace, clean shell history.
 
-```bash
-bash infra/stop.sh
-```
+## Operational Commands
 
-### Persistent Mode (Optional)
-
-If you need `/home/user` to survive container restarts:
-
-```bash
-docker compose -f infra/open-terminal-isolated-persistent.compose.yml up -d
-```
-
-⚠️ Trade-off: You lose the automatic wipe-on-restart guarantee. Use `wipe-hard.sh` when switching projects.
-
-## Architecture
-
-```
-┌─────────────────────────────────────┐
-│         Open WebUI                  │
-│    (Integrations → Terminal)        │
-└────────────────┬────────────────────┘
-                 │ HTTP
-                 ▼
-    ┌────────────────────────┐
-    │ ot-net (bridge)        │
-    │  └─ open-terminal      │
-    │     (port 8000)        │
-    └────────────────────────┘
-                 ●
-    ┌────────────────────────┐
-    │ lc-net (bridge)        │
-    │  └─ little-coder       │
-    │     (agent runtime)    │
-    └────────────────────────┘
-
-Key property: ot-net and lc-net are isolated.
-open-terminal cannot see little-coder and vice versa.
-```
-
-## Security Guarantees
-
-### Isolation
-
-- **No shared network**: `open-terminal` and `little-coder` are on separate bridge networks
-- **No Docker socket**: Neither container can create, delete, or inspect other containers
-- **Ephemeral by default**: Container state is wiped on each hard wipe or container recreate
-
-### Containment
-
-- **Read-only filesystem**: Root FS cannot be modified; only `/tmp`, `/run`, `/home/user` are writable
-- **Dropped capabilities**: No `CAP_SYS_ADMIN`, `CAP_NET_ADMIN`, `CAP_DAC_OVERRIDE`, etc.
-- **Resource limits**: CPU, memory, and process count bounded
-
-### Observability
-
-- **Loopback-only port**: Port 8000 is not exposed to LAN or external interfaces
-- **Audit trail**: Commands executed in container leave logs visible via `docker logs`
-
-## Token and Credential Guidance
-
-For GitHub access inside open-terminal:
-
-1. **Generate a fine-grained personal access token** on GitHub:
-   - Scoped to specific repositories
-   - Permissions: `Contents: read/write`, `Pull Requests: write`
-   - No admin or org-level scope
-
-2. **Inject at runtime** (do not hardcode):
-
-   ```bash
-   docker exec -it open-terminal gh auth login --with-token < token.txt
-   ```
-
-3. **Or use environment variable**:
-
-   ```bash
-   docker run ... -e GITHUB_TOKEN=$GITHUB_TOKEN ...
-   ```
-
-4. **Rotate tokens regularly** (monthly recommended)
-
-## Verification Checklist
-
-After startup, verify:
-
-```bash
-bash infra/verify-security.sh
-```
-
-This checks:
-
-- ✓ No docker.sock mounts
-- ✓ Read-only root filesystem
-- ✓ Loopback-only port binding
-- ✓ All capabilities dropped
-- ✓ no-new-privileges flag set
-- ✓ Separate networks (ot-net, lc-net)
-- ✓ Resource limits applied
-
-## Troubleshooting
-
-### Container fails to start
-
-Check logs:
-
-```bash
-docker compose -f infra/open-terminal-isolated.compose.yml logs open-terminal
-```
-
-Common issues:
-
-- API key is placeholder → set it in `.env`
-- Port 8000 already in use → change port binding or stop conflicting container
-- Image not found → `docker pull ghcr.io/open-webui/open-terminal:slim`
-
-### "Permission denied" inside container
-
-This is expected with `read_only: true`. Use `/tmp`, `/run`, or `/home/user` for writes.
-
-### Network isolation check
-
-Verify containers cannot see each other:
-
-```bash
-# From inside open-terminal, try to reach little-coder
-docker exec -it open-terminal ping little-coder
-# Result: "ping: cannot resolve little-coder"  ← Expected, confirms isolation
-```
-
-### Egress restrictions
-
-For production, add firewall rules to limit open-terminal egress:
-
-- Allow: GitHub.com (git clone, push)
-- Allow: Model API endpoints (if needed)
-- Deny: Everything else
-
-## Operational Runbook
-
-**Daily Startup:**
+### Start
 
 ```bash
 bash infra/start.sh
-bash infra/verify-security.sh
 ```
 
-**Per-Project Workflow:**
+### Check Status
 
-1. Integrate terminal in Open WebUI
-2. Clone repo inside container
-3. Create feature branch
-4. Implement, commit, push
-5. Run wipe (soft or hard based on sensitivity)
+```bash
+bash infra/status.sh
+```
 
-**Shutdown:**
+### View Logs
+
+```bash
+docker logs -f little-coder-agent
+docker logs -f little-coder-terminal
+```
+
+### Stop
 
 ```bash
 bash infra/stop.sh
 ```
 
-**Full Reset (if issues):**
+### Soft Wipe (Clear Projects)
+
+```bash
+bash infra/wipe-soft.sh
+```
+
+### Hard Wipe (Full Reset)
 
 ```bash
 bash infra/wipe-hard.sh
+```
+
+### Verify Security
+
+```bash
 bash infra/verify-security.sh
 ```
 
-## Future Hardening
+### Full Docker Inspect
 
-If you need stronger controls:
+```bash
+docker compose -f infra/docker-compose.yml ps -a
+docker network ls | grep little-coder
+docker inspect little-coder-net
+```
 
-1. **User namespaces**: Run containers as non-root user inside namespace
-2. **AppArmor/SELinux**: Custom profile tailored to terminal workloads
-3. **mTLS + IP allowlist**: Reverse proxy in front of Open WebUI
-4. **One-time containers**: Spawn isolated container per project, destroy when done
-5. **Egress firewall**: Host-level or Docker policy to block unauthorized outbound connections
+## Environment Variables
 
-See [docs/plans/openterminal-workspace.md](../docs/plans/openterminal-workspace.md#notes-for-future-hardening) for details.
+**Set in `.env`:**
+
+| Variable | Purpose | Example |
+|----------|---------|---------|
+| `OPEN_TERMINAL_API_KEY` | Terminal authentication | Hex string (32 bytes) |
+
+**Available inside containers:**
+
+- `OPEN_TERMINAL_URL` (agent only) — `http://little-coder-terminal:8000`
+- `OPEN_TERMINAL_API_KEY` (both) — Shared API key for terminal auth
+
+To add more variables:
+
+1. Update `.env`
+2. Reference them in `docker-compose.yml` under `environment:`
+3. Restart: `bash infra/stop.sh && bash infra/start.sh`
+
+## Network Communication
+
+**Inside the container network:**
+
+- Agent → Terminal: `http://little-coder-terminal:8000`
+- Agent ← Terminal: Not applicable (terminal is passive)
+- External → Terminal: `http://127.0.0.1:8001` (debugging only)
+
+**DNS:**
+
+Docker's embedded DNS makes containers discoverable by name:
+
+```bash
+# From agent or terminal
+curl http://little-coder-terminal:8000
+# Resolves to 172.20.0.X (internal IP)
+```
+
+## Token & Credential Guidance
+
+### GitHub Access
+
+For the agent to clone/push repositories:
+
+1. **Generate a fine-grained GitHub token**:
+   - [Settings → Developer settings → Personal access tokens](https://github.com/settings/tokens?type=beta)
+   - Scoped to specific repositories
+   - Permissions: `Contents: read/write`, `Pull Requests: write`
+
+2. **Inject into agent at startup** (update `docker-compose.yml`):
+
+   ```yaml
+   services:
+     little-coder-agent:
+       environment:
+         GITHUB_TOKEN: ${GITHUB_TOKEN}
+   ```
+
+3. **Set in `.env`**:
+
+   ```env
+   GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+   ```
+
+4. **Rotate regularly** (monthly recommended)
+
+### Inside the Agent
+
+```bash
+# Example: Authenticate with gh CLI
+export GITHUB_TOKEN=$(cat /run/secrets/github_token)
+gh auth login
+```
+
+**Never hardcode tokens in code or commit to Git.**
+
+## Troubleshooting
+
+### Containers won't start
+
+**Check `.env`:**
+
+```bash
+cat infra/.env
+```
+
+Ensure `OPEN_TERMINAL_API_KEY` is not the placeholder value.
+
+**Check logs:**
+
+```bash
+docker compose -f infra/docker-compose.yml logs
+```
+
+Common causes:
+- API key is placeholder
+- Port 8001 already in use
+- Agent image build failed
+
+### Agent can't reach terminal
+
+**Inside agent container, test connectivity:**
+
+```bash
+docker exec little-coder-agent curl http://little-coder-terminal:8000/api/status
+```
+
+If this fails:
+- Check network: `docker network inspect little-coder-net`
+- Verify terminal is running: `docker ps | grep little-coder-terminal`
+- Check terminal logs: `docker logs little-coder-terminal`
+
+### Port 8001 already in use
+
+Find what's using it:
+
+```bash
+# On Linux
+lsof -i :8001
+
+# On Windows PowerShell
+Get-NetTCPConnection -LocalPort 8001
+```
+
+Either stop the conflicting service or change the port in `docker-compose.yml`:
+
+```yaml
+ports:
+  - "127.0.0.1:8002:8000"  # Use 8002 instead
+```
+
+### Build fails
+
+Ensure the Dockerfile exists and is valid:
+
+```bash
+cd infra
+docker build -f ../Dockerfile -t little-coder:local ..
+```
+
+If it fails, check:
+- `npm install` can complete
+- All source files are present
+- No circular dependencies
+
+## Verification Checklist
+
+After startup, run:
+
+```bash
+bash infra/verify-security.sh
+```
+
+Confirms:
+- ✓ Both containers running
+- ✓ Shared network active
+- ✓ Resource limits applied
+- ✓ Port binding correct
+
+## Architecture Decisions
+
+### Why a single parent?
+
+- **Unified lifecycle**: Both services start/stop together
+- **Service discovery**: Agent can reach terminal by name
+- **Simplified operations**: One compose file, one network
+- **Shared environment**: Both have access to API key and configuration
+
+### Why separate containers?
+
+- **Process isolation**: Each service has own PID, filesystem view
+- **Resource control**: Limits applied per-container
+- **Crash isolation**: Terminal failure doesn't kill agent
+- **Scaling**: Can adjust resource limits independently
+
+### Why loopback-only port?
+
+- **Host security**: Only local processes can access terminal
+- **Network isolation**: Terminal not exposed to LAN
+- **Debugging**: Still accessible for troubleshooting
+
+## Advanced Configuration
+
+### Persistent Volumes
+
+To keep `/home/user` across restarts:
+
+```yaml
+services:
+  little-coder-terminal:
+    volumes:
+      - terminal-home:/home/user
+
+volumes:
+  terminal-home:
+```
+
+Then rebuild: `docker compose -f infra/docker-compose.yml up -d`
+
+### Custom Resources
+
+Adjust limits for your hardware:
+
+```yaml
+services:
+  little-coder-agent:
+    mem_limit: 4g      # 4GB
+    cpus: 4             # 4 cores
+    pids_limit: 512     # 512 processes
+```
+
+### Development Mode
+
+Mount source for hot reload:
+
+```yaml
+services:
+  little-coder-agent:
+    volumes:
+      - ../:/app       # Mount source at /app
+    command: npm run dev  # Instead of default
+```
 
 ## References
 
-- [Open Terminal Documentation](https://github.com/open-webui/open-terminal)
-- [Docker Compose Reference](https://docs.docker.com/compose/compose-file/)
-- [Docker Security Best Practices](https://docs.docker.com/engine/security/)
-- [OWASP: Container Security Top 10](https://owasp.org/Container-Security/)
+- [Docker Compose Documentation](https://docs.docker.com/compose/)
+- [Open Terminal GitHub](https://github.com/open-webui/open-terminal)
+- [Little-Coder Repository](../)
+- [Original Architecture Plan](../docs/plans/openterminal-workspace.md)

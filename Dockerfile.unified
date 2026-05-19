@@ -1,0 +1,107 @@
+FROM node:22-bookworm-slim
+
+# Install Python, supervisor, and other dependencies
+RUN apt-get update && apt-get install -y \
+    python3 \
+    python3-pip \
+    supervisor \
+    git \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create directories
+RUN mkdir -p /app/little-coder /var/log/supervisor /var/run/supervisor
+
+# Setup little-coder
+WORKDIR /app/little-coder
+COPY package*.json ./
+RUN npm install --production
+COPY . .
+
+# Install Python packages for terminal service
+RUN pip install --no-cache-dir uvicorn fastapi --break-system-packages
+
+# Create terminal service Python app
+RUN cat > /app/terminal_service.py << 'EOFILE'
+from fastapi import FastAPI
+import uvicorn
+import os
+
+app = FastAPI()
+
+@app.get("/api/status")
+async def status():
+    return {"status": "ok", "message": "Terminal service running"}
+
+@app.get("/")
+async def root():
+    return {"status": "running"}
+
+if __name__ == "__main__":
+    api_key = os.getenv("OPEN_TERMINAL_API_KEY", "default")
+    uvicorn.run(app, host="0.0.0.0", port=8000)
+EOFILE
+
+# Create supervisor config (inline to avoid caching issues)
+RUN cat > /etc/supervisor/supervisord.conf << 'EOCONF'
+[supervisord]
+nodaemon=true
+logfile=/var/log/supervisor/supervisord.log
+pidfile=/var/run/supervisord.pid
+user=root
+
+[program:terminal-service]
+command=python3 /app/terminal_service.py
+autostart=true
+autorestart=true
+stderr_logfile=/var/log/supervisor/terminal.err.log
+stdout_logfile=/var/log/supervisor/terminal.out.log
+environment=OPEN_TERMINAL_API_KEY=%(ENV_OPEN_TERMINAL_API_KEY)s
+
+[program:little-coder]
+command=/usr/local/bin/node /app/little-coder/bin/little-coder.mjs
+directory=/app/little-coder
+autostart=true
+autorestart=true
+stderr_logfile=/var/log/supervisor/little-coder.err.log
+stdout_logfile=/var/log/supervisor/little-coder.out.log
+environment=OPEN_TERMINAL_URL=http://localhost:8000,OPEN_TERMINAL_API_KEY=%(ENV_OPEN_TERMINAL_API_KEY)s
+
+[unix_http_server]
+file=/var/run/supervisor.sock
+
+[supervisorctl]
+serverurl=unix:///var/run/supervisor.sock
+
+[rpcinterface:supervisor]
+supervisor.rpcinterface_factory = supervisor.rpcinterface:make_main_rpcinterface
+EOCONF
+
+# Create entrypoint script (inline)
+RUN cat > /usr/local/bin/entrypoint.sh << 'EOENT'
+#!/bin/bash
+set -e
+echo "🚀 Starting unified Little-Coder container..."
+echo "================================================"
+echo ""
+echo "Processes managed by supervisord:"
+echo "  • terminal-service  (Python/Uvicorn) → localhost:8000"
+echo "  • little-coder      (Node.js)        → localhost:3000"
+echo ""
+echo "Environment:"
+echo "  OPEN_TERMINAL_API_KEY: ${OPEN_TERMINAL_API_KEY:-(not set)}"
+echo ""
+
+if [ -z "$OPEN_TERMINAL_API_KEY" ]; then
+    export OPEN_TERMINAL_API_KEY=""
+fi
+
+echo "Starting supervisord..."
+exec /usr/bin/supervisord -c /etc/supervisor/supervisord.conf
+EOENT
+
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+EXPOSE 3000 8000
+
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

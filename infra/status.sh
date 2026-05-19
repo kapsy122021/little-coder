@@ -1,21 +1,25 @@
 #!/bin/bash
-# Show status of the isolated stack
+# Show status of the unified Little-Coder container
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-COMPOSE_FILE="$SCRIPT_DIR/open-terminal-isolated.compose.yml"
+COMPOSE_FILE="$SCRIPT_DIR/docker-compose.unified.yml"
 
-echo "📊 Stack Status"
-echo "==============="
+echo "📊 Little-Coder Container Status"
+echo "=================================="
 echo ""
 
 docker compose -f "$COMPOSE_FILE" ps
 
 echo ""
-echo "📋 Networks"
-echo "==========="
-docker network ls | grep -E "ot-net|lc-net" || echo "Networks not created yet"
-
+echo "📋 Internal Services (inside container):"
+echo "  • little-coder      (Node.js) → localhost:3000"
+echo "  • open-terminal     (Uvicorn) → localhost:8000"
 echo ""
-echo "📦 Volumes"
-echo "=========="
-docker volume ls | grep open-terminal || echo "No volumes yet"
+echo "📡 External Access:"
+echo "  • Terminal API: http://127.0.0.1:8001"
+echo ""
+echo "📝 Logs:"
+echo "  docker logs -f little-coder"
+echo ""
+
+

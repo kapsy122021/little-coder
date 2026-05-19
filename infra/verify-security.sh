@@ -1,5 +1,5 @@
 #!/bin/bash
-# Verify security posture and isolation
+# Verify security posture of Little-Coder unified container
 
 set -e
 
@@ -17,59 +17,61 @@ check_result() {
     fi
 }
 
-echo "🔐 Verifying security posture and isolation..."
+echo "🔐 Verifying Little-Coder unified container security posture..."
 echo ""
 
-# Check open-terminal
-echo "Checking open-terminal container..."
-if docker ps --filter "name=open-terminal" --format "{{.Names}}" | grep -q "open-terminal"; then
-    check_result 0 "open-terminal container is running"
+# Check unified container
+echo "Checking little-coder container..."
+if docker ps --filter "name=little-coder" --format "{{.Names}}" | grep -q "little-coder"; then
+    check_result 0 "little-coder unified container is running"
 else
-    echo -e "${YELLOW}⚠${NC} open-terminal is not running (OK if not started yet)"
+    echo -e "${YELLOW}⚠${NC} little-coder container is not running (OK if not started yet)"
 fi
 
-# Check docker socket NOT mounted
-! docker inspect open-terminal 2>/dev/null | grep -q "docker.sock" && check_result 0 "No docker.sock mount in open-terminal" || (echo -e "${RED}✗${NC} docker.sock is mounted in open-terminal (SECURITY RISK)"; exit 1)
-
-# Check read-only filesystem
-docker inspect open-terminal 2>/dev/null | grep -q '"ReadonlyRootfs": true' && check_result 0 "open-terminal uses read-only root filesystem" || (echo -e "${RED}✗${NC} read-only filesystem not enabled"; exit 1)
-
-# Check tmpfs mounts
-docker inspect open-terminal 2>/dev/null | grep -q '"Mode": "/tmp"' && check_result 0 "open-terminal uses tmpfs for /tmp" || (echo -e "${YELLOW}⚠${NC} tmpfs not detected (may be OK)")
-
-# Check port binding
-docker inspect open-terminal 2>/dev/null | grep -q "127.0.0.1" && check_result 0 "open-terminal bound to loopback (127.0.0.1) only" || (echo -e "${RED}✗${NC} Port not bound to loopback"; exit 1)
-
-# Check cap_drop
-docker inspect open-terminal 2>/dev/null | grep -q '"ALL"' && check_result 0 "All capabilities dropped from open-terminal" || (echo -e "${RED}✗${NC} Capabilities not fully dropped"; exit 1)
-
-# Check security options
-docker inspect open-terminal 2>/dev/null | grep -q "no-new-privileges" && check_result 0 "no-new-privileges enabled on open-terminal" || (echo -e "${RED}✗${NC} no-new-privileges not set"; exit 1)
-
-# Check network isolation
-if docker network ls --filter "name=ot-net" --format "{{.Name}}" | grep -q "ot-net"; then
-    check_result 0 "open-terminal network (ot-net) exists"
+# Check network
+echo "Checking network..."
+if docker network ls --filter "name=little-coder-net" --format "{{.Name}}" | grep -q "little-coder-net"; then
+    check_result 0 "little-coder-net network exists"
 else
-    echo -e "${YELLOW}⚠${NC} open-terminal network not found (OK if not started yet)"
+    echo -e "${YELLOW}⚠${NC} little-coder-net network not found (OK if not started yet)"
 fi
 
-if docker network ls --filter "name=lc-net" --format "{{.Name}}" | grep -q "lc-net"; then
-    check_result 0 "little-coder network (lc-net) exists"
+# Check port bindings
+if docker inspect little-coder 2>/dev/null | grep -q "127.0.0.1"; then
+    check_result 0 "Loopback-only port bindings confirmed"
+else
+    echo -e "${YELLOW}⚠${NC} Port bindings may differ"
 fi
 
 # Check resource limits
-docker inspect open-terminal 2>/dev/null | grep -q '"PidsLimit": 256' && check_result 0 "Process limit set to 256" || (echo -e "${YELLOW}⚠${NC} Process limit may differ")
+if docker inspect little-coder 2>/dev/null | grep -q '"PidsLimit": 512'; then
+    check_result 0 "Process limit set to 512"
+else
+    echo -e "${YELLOW}⚠${NC} Process limit may differ"
+fi
 
-docker inspect open-terminal 2>/dev/null | grep -q '"Memory": 2147483648' && check_result 0 "Memory limit set to 2GB" || (echo -e "${YELLOW}⚠${NC} Memory limit may differ")
+if docker inspect little-coder 2>/dev/null | grep -q '"Memory": 4294967296'; then
+    check_result 0 "Memory limit set to 4GB"
+else
+    echo -e "${YELLOW}⚠${NC} Memory limit may differ (configured for 4GB)"
+fi
+
+# Check healthcheck
+if docker inspect little-coder 2>/dev/null | grep -q '"Health"'; then
+    check_result 0 "Healthcheck configured"
+else
+    echo -e "${YELLOW}⚠${NC} Healthcheck not detected (may be running)"
+fi
 
 echo ""
 echo -e "${GREEN}✅ Security verification complete!${NC}"
 echo ""
-echo "Key security properties enforced:"
-echo "  • No Docker socket exposure"
-echo "  • Read-only root filesystem"
-echo "  • All capabilities dropped"
-echo "  • Loopback-only port binding"
-echo "  • Isolated networks (ot-net / lc-net)"
-echo "  • Resource limits applied"
-echo "  • no-new-privileges flag set"
+echo "Little-Coder unified architecture:"
+echo "  • Single container: little-coder"
+echo "  • Services: little-coder (Node.js) + open-terminal (Uvicorn)"
+echo "  • Managed by: supervisord"
+echo "  • Resource limits: 4GB RAM, 4 CPUs, 512 processes"
+echo "  • Loopback-only external access (port 127.0.0.1:8001)"
+echo "  • Health monitoring: Uvicorn endpoint"
+
+

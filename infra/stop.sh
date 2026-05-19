@@ -1,12 +1,14 @@
 #!/bin/bash
-# Stop the isolated stack
+# Stop the unified Little-Coder container
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-COMPOSE_FILE="$SCRIPT_DIR/open-terminal-isolated.compose.yml"
+COMPOSE_FILE="$SCRIPT_DIR/docker-compose.unified.yml"
 
-echo "🛑 Stopping stack..."
+echo "🛑 Stopping Little-Coder container..."
 docker compose -f "$COMPOSE_FILE" down
 
-echo "✅ Stack stopped."
+echo "✅ Container stopped."
+
+

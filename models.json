@@ -10,7 +10,7 @@
           "name": "Qwen3.6-27B (llama-swap alias)",
           "reasoning": true,
           "input": ["text"],
-          "contextWindow": 32768,
+          "contextWindow": 122880,
           "maxTokens": 4096,
           "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 }
         },
@@ -19,7 +19,7 @@
           "name": "Qwen3.6-27B NoThink (llama-swap alias)",
           "reasoning": false,
           "input": ["text"],
-          "contextWindow": 32768,
+          "contextWindow": 122880,
           "maxTokens": 4096,
           "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 }
         }

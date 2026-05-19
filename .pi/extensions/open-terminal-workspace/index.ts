@@ -63,6 +63,34 @@ async function otFetch(path: string, init: RequestInit = {}): Promise<any> {
 export default function (pi: ExtensionAPI) {
   if (!ENABLED) return;
 
+  // ── Probe llama proxy for advertised context lengths (best-effort) ─────
+  // llama-server native /v1/models includes a context_length field per model.
+  // llama-swap (current proxy) does not expose it yet, so this is a no-op for
+  // now — but will log discovered values automatically once the proxy does.
+  // The static fallback in docker.models.json + .pi/settings.json is 122880 (120 K).
+  void (async () => {
+    const baseUrl = process.env.LLAMACPP_BASE_URL || "http://host.docker.internal:8000/v1";
+    const apiKey = process.env.LLAMACPP_API_KEY || "";
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 3000);
+      const res = await fetch(`${baseUrl}/models`, {
+        signal: controller.signal,
+        headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
+      });
+      clearTimeout(timer);
+      if (!res.ok) return;
+      const data: any = await res.json();
+      for (const m of data?.data ?? []) {
+        if (typeof m.context_length === "number") {
+          console.log(`[open-terminal-workspace] proxy context_length: ${m.id} = ${m.context_length}`);
+        }
+      }
+    } catch {
+      // proxy unreachable or doesn't expose context_length — expected with llama-swap
+    }
+  })();
+
   // ── Requirement 1: lock provider to llamacpp/* ────────────────────────
   pi.on("before_agent_start", async (event) => {
     const evAny = event as any;

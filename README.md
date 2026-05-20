@@ -2,74 +2,179 @@
 
 **A coding agent tuned for small local models, built on top of [pi](https://pi.dev).**
 
-![little-coder startup view](docs/assets/startup.svg)
+The recommended setup is the Docker Compose stack in `infra/` — it bundles the agent with a sandboxed shell environment and is the fastest path to a working install. See [Local model setup](#local-model-setup-optional) for inference options.
 
-The research story behind all this — why scaffold–model fit matters, how a 9.7 B Qwen beat frontier entries on Aider Polyglot, and what the load-bearing mechanisms actually do — is written up on Substack: **[*Honey, I Shrunk the Coding Agent*](https://open.substack.com/pub/itayinbarr/p/honey-i-shrunk-the-coding-agent)**. Start there if you want the "why"; stay here for the "how".
+---
 
-## How it relates to pi
+## Container setup (Docker — recommended for new developers)
 
-[pi](https://pi.dev) is the minimal substrate — agent loop, multi-provider API, TUI, session tree, compaction, extension model. Four built-in tools (read / write / edit / bash) and a ~1000-token system prompt.
+The `infra/` directory ships a Docker Compose stack that bundles the little-coder agent together with [open-terminal](https://github.com/open-webui/open-terminal) — a sandboxed shell environment the agent operates inside. This is the recommended path for a clean, reproducible setup that doesn't touch your host system.
 
-little-coder is **pi + 20 extensions + 30 skill markdown files + a Python benchmark harness**. It doesn't fork pi or shadow its CLI — pi is a plain dependency in `package.json`, and everything little-coder-specific lives under `.pi/extensions/`, `skills/`, and `benchmarks/`. You can mix little-coder with pi packages from anyone else, add your own extensions, or disable ours per-project via `.pi/settings.json`.
+### Requirements
 
-If you've never used pi, it's useful to skim [pi.dev](https://pi.dev) first — the rest of this doc assumes pi's model of `--agent-import-path`, `--mode rpc`, and `.pi/extensions/` auto-discovery.
+| Requirement      | Minimum version                  | Notes                                                                                          |
+| ---------------- | -------------------------------- | ---------------------------------------------------------------------------------------------- |
+| Docker Engine    | 24+                              | Or Docker Desktop 4.x on macOS/Windows                                                         |
+| Docker Compose   | v2 (the `docker compose` plugin) | **Not** the legacy `docker-compose` binary                                                     |
+| Node.js          | 22.19+                           | Only needed if you run `little-coder` outside Docker                                           |
+| Git              | any                              | For cloning this repo                                                                          |
+| Free RAM         | 2 GB                             | Each container is capped at 2 GB; 4 GB total recommended                                       |
+| Inference server | running                          | A local `llama-server` or cloud API key — see [Local model setup](#local-model-setup-optional) |
 
-## Install
+> **Windows users.** Run all `bash infra/*.sh` commands inside WSL 2 or Git Bash. Docker Desktop with the WSL 2 backend is the easiest path.
 
-One-line install (Node.js 22.19+ required):
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/itayinbarr/little-coder/main/install.sh | bash
-```
-
-Or with npm directly:
-
-```bash
-npm install -g little-coder
-```
-
-Or with [bun](https://bun.sh):
+### 1. Clone and enter the repo
 
 ```bash
-bun add -g little-coder
+git clone https://github.com/itayinbarr/little-coder.git
+cd little-coder
 ```
 
-That's the whole install. No clone, no `npm install` in a workspace, no PATH fiddling. `little-coder` is now on your PATH and works from any directory.
-
-> **Note for `bun add -g` users.** The launcher (`bin/little-coder.mjs`) is a Node.js script with `#!/usr/bin/env node` at the top, so Node ≥ 22.19 still has to be on your PATH for the binary to start — bun is fine for installing/updating the package, but the runtime is Node. If you want a fully node-less setup, replace the shebang in `$(bun pm bin -g)/little-coder` with `#!/usr/bin/env bun`.
-
-## Run
+### 2. Configure the API key
 
 ```bash
-cd ~/your-project
-little-coder --model llamacpp/qwen3.6-35b-a3b
+cp infra/.env.example infra/.env
 ```
 
-This is the canonical setup little-coder is tuned for: a local llama.cpp server hosting Qwen3.6-35B-A3B. See **[Local model setup (optional)](#local-model-setup-optional)** below for how to serve it.
-
-Cloud models work the same way:
+Open `infra/.env` and replace the placeholder with a freshly generated secret:
 
 ```bash
-little-coder --model anthropic/claude-haiku-4-5
-little-coder --model openai/gpt-4o-mini "What does this codebase do?"
-little-coder --model ollama/qwen3.5             # local Ollama
-little-coder --model lmstudio/local-model       # local LM Studio (whatever model you have loaded)
-little-coder --list-models                      # see everything pi knows about
+# Linux / macOS / WSL
+openssl rand -hex 32
+
+# Windows PowerShell (no WSL)
+$bytes = New-Object Byte[] 32
+(New-Object System.Security.Cryptography.RNGCryptoServiceProvider).GetBytes($bytes)
+-join ($bytes | ForEach-Object { $_.ToString("x2") })
 ```
 
-The agent uses the directory you launched it from as its working directory — `Read` / `Write` / `Edit` / `Bash` operate on your project, not on little-coder's install path.
+Paste the output into `infra/.env`:
 
-For local providers (llama.cpp, Ollama, LM Studio) pi expects *some* value in the API-key env even though local servers ignore it:
+```env
+OPEN_TERMINAL_API_KEY=<your-generated-key>
+LLAMACPP_API_KEY=noop   # leave as-is unless your proxy requires a real token
+```
+
+> `infra/.env` is `.gitignore`-protected. Never commit it.
+
+### 3. Configure git credentials
+
+The agent runs `git clone / push / pull` inside the open-terminal container. Credentials are bind-mounted from the host at `infra/git/credentials` → `/home/user/.git-credentials` inside the container. **They survive both soft and hard wipes** because the file lives on the host.
 
 ```bash
-export LLAMACPP_API_KEY=noop
-export OLLAMA_API_KEY=noop
-export LMSTUDIO_API_KEY=noop
+cp infra/git/credentials.example infra/git/credentials
 ```
 
-`LLAMACPP_BASE_URL`, `OLLAMA_BASE_URL`, and `LMSTUDIO_BASE_URL` override the defaults (`http://127.0.0.1:8888/v1`, `http://127.0.0.1:11434/v1`, `http://127.0.0.1:1234/v1`).
+Edit `infra/git/credentials` and add one line per repo (or one line per token scope):
 
-For cloud providers, set the standard env (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, etc.) and pi will discover it.
+```
+https://x-access-token:<YOUR_GITHUB_PAT>@github.com/<owner>/<repo>
+```
+
+A single fine-grained PAT that covers all your repos can be written as:
+
+```
+https://x-access-token:<YOUR_GITHUB_PAT>@github.com
+```
+
+Git picks the most specific matching entry automatically — no per-launch flags needed. To add, change, or revoke a token, edit `infra/git/credentials` on the host. The change takes effect immediately; no container restart required.
+
+> **Security**: `infra/git/credentials` is listed in `.gitignore`. Never commit it. If you accidentally commit a PAT, revoke it immediately on GitHub and generate a new one.
+
+To update your git identity (name / email shown in commits), edit `infra/git/gitconfig`:
+
+```ini
+[user]
+    name  = Your Name
+    email = you@example.com
+```
+
+### 4. Start the stack
+
+```bash
+bash infra/start.sh
+```
+
+`start.sh` validates `.env`, then runs `docker compose up -d` to bring up both containers on the `little-coder-net` bridge network.
+
+### 5. Launch the agent
+
+```bash
+# Interactive session (most common)
+docker exec -it little-coder little-coder --model llamacpp/qwen3.6:27b
+
+# Non-thinking variant (faster, lower quality)
+docker exec -it little-coder little-coder --model llamacpp/qwen3.6:27b-nothink
+
+# Pass a one-shot task directly
+docker exec -it little-coder little-coder --model llamacpp/qwen3.6:27b "Explain this codebase"
+```
+
+The agent's `Read` / `Write` / `Edit` / `Bash` tools execute inside the open-terminal container — your host filesystem is not touched.
+
+### 6. Clone and work with your project repos
+
+Once the agent is running, tell it to clone any repo your credentials cover. The `infra/git/credentials` file is already bind-mounted inside the terminal container, so no extra auth flags are needed — git picks the right token automatically.
+
+**Example chat prompts:**
+
+```
+Clone https://github.com/<owner>/<repo>.git into ~/projects and give me an overview of the codebase.
+```
+
+```
+Clone https://github.com/<owner>/<repo>.git, create a branch called feature/my-change, then implement <task>.
+```
+
+```
+Clone https://github.com/<owner>/<repo>.git and fix the failing tests in src/utils/.
+```
+
+```
+Clone https://github.com/<owner>/<repo>.git, make the changes needed to close issue #42, commit, and push the branch.
+```
+
+The agent clones into `/home/user/projects/` inside the open-terminal container. When done, run a wipe to clean up before the next task.
+
+> **Adding a new token mid-session.** Edit `infra/git/credentials` on the host at any time — the file is bind-mounted, so the change is live immediately with no container restart.
+
+### Useful commands
+
+| Command                                              | What it does                                                                |
+| ---------------------------------------------------- | --------------------------------------------------------------------------- |
+| `bash infra/start.sh`                                | Build images (first time) and start both containers                         |
+| `bash infra/stop.sh`                                 | Gracefully stop both containers                                             |
+| `bash infra/status.sh`                               | Show running containers and exposed ports                                   |
+| `bash infra/verify-security.sh`                      | Audit port bindings, resource limits, network isolation                     |
+| `bash infra/wipe-soft.sh`                            | Clear `/home/user/projects` inside open-terminal; tools and caches are kept |
+| `bash infra/wipe-hard.sh`                            | Destroy and rebuild both containers from scratch                            |
+| `docker logs -f little-coder`                        | Stream agent logs                                                           |
+| `docker logs -f open-terminal`                       | Stream terminal logs                                                        |
+| `docker compose -f infra/docker-compose.yml logs -f` | Stream logs from both services                                              |
+| `docker exec -it open-terminal bash`                 | Drop into a shell inside the terminal container                             |
+| `little-coder --list-models`                         | List every registered model (run from inside the container or on the host)  |
+
+### Wipe strategies
+
+After finishing a project, choose a wipe level:
+
+**Soft wipe** — clears project files, keeps installed tools and caches:
+
+```bash
+bash infra/wipe-soft.sh
+```
+
+Use between low-sensitivity tasks where rebuilding the tool environment would be slow.
+
+**Hard wipe** — destroys and rebuilds containers entirely:
+
+```bash
+bash infra/wipe-hard.sh
+```
+
+Use when you want a completely clean slate or need to pick up Dockerfile changes. Note: `infra/git/credentials` and `infra/git/gitconfig` survive both wipes because they are bind-mounted from the host.
+
+---
 
 ## Local model setup (optional)
 
@@ -116,33 +221,6 @@ ollama pull qwen3.5        # 9.7B — the paper's model
    little-coder --model lmstudio/local-model
    ```
    The shipped `lmstudio/local-model` id routes to whatever model LM Studio currently has loaded — no extra config needed for the single-model case. If you serve on a non-default port, set `LMSTUDIO_BASE_URL=http://127.0.0.1:<port>/v1`. To target a specific model when you have several loaded, add an entry to `~/.config/little-coder/models.json` (see **Configuring models** below).
-
-**Serving from another machine on your LAN.** Each provider's `*_BASE_URL` env var accepts any host, not just `127.0.0.1`, so you can run inference on a beefier box and connect from a laptop or another device on the same WiFi.
-
-On the **server** (the box with the GPU):
-
-- *llama.cpp*: start `llama-server` with `--host 0.0.0.0` (or your specific LAN interface) instead of `127.0.0.1`. Everything else from Option A unchanged.
-- *LM Studio*: in the Server tab, enable **Serve on local network** so it binds `0.0.0.0:1234` instead of `127.0.0.1:1234`.
-- *Ollama*: `OLLAMA_HOST=0.0.0.0:11434 ollama serve` (or set `OLLAMA_HOST=0.0.0.0` in the user systemd unit).
-- If `ufw` / `firewalld` is active, allow your LAN subnet to the relevant port (e.g. `sudo ufw allow from 192.168.0.0/16 to any port 8888 proto tcp`).
-- Find the LAN IP with `hostname -I` (Linux) or `ipconfig getifaddr en0` (macOS).
-
-On the **client** (the machine running little-coder):
-
-```bash
-# Pick the env vars matching whichever provider is running on the server
-export LLAMACPP_API_KEY=noop
-export LLAMACPP_BASE_URL=http://<server-lan-ip>:8888/v1
-
-# Sanity check reachability before launching the agent
-curl -s http://<server-lan-ip>:8888/v1/models | head
-
-little-coder --model llamacpp/qwen3.6-35b-a3b
-```
-
-The streaming chat-completions adapter works over a local network the same way it does over loopback — no client code change, no proxy needed. The per-model profile in `.pi/settings.json` (context/thinking-budget/temperature) still applies because it's keyed by `<provider>/<model-id>`, which the client picks regardless of where the server lives.
-
-All small-model-specific extensions auto-disable for large/cloud models so they don't interfere.
 
 ---
 
@@ -197,10 +275,10 @@ little-coder gates `Bash` tool calls against a built-in safe-prefix whitelist (`
 
 Two env vars control the gate:
 
-| Env var | Values | Effect |
-|---|---|---|
-| `LITTLE_CODER_PERMISSION_MODE` | `auto` *(default)* / `accept-all` / `manual` | `auto`: block any bash command not on the whitelist. `accept-all`: skip the gate entirely, every bash call passes (the benchmark runner sets this). `manual`: same as `auto` but with a different rejection message. |
-| `LITTLE_CODER_BASH_ALLOW` | comma-separated prefixes | Extra allow-prefixes merged with the built-in list. **Trailing whitespace is meaningful**: `"make "` allows `make test` but not `makefoo`; `"make"` allows both. |
+| Env var                        | Values                                       | Effect                                                                                                                                                                                                               |
+| ------------------------------ | -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `LITTLE_CODER_PERMISSION_MODE` | `auto` _(default)_ / `accept-all` / `manual` | `auto`: block any bash command not on the whitelist. `accept-all`: skip the gate entirely, every bash call passes (the benchmark runner sets this). `manual`: same as `auto` but with a different rejection message. |
+| `LITTLE_CODER_BASH_ALLOW`      | comma-separated prefixes                     | Extra allow-prefixes merged with the built-in list. **Trailing whitespace is meaningful**: `"make "` allows `make test` but not `makefoo`; `"make"` allows both.                                                     |
 
 Examples:
 
@@ -216,79 +294,25 @@ Write/Edit confirmations are pi's responsibility; little-coder doesn't intercept
 
 ---
 
-## Paper / benchmark results
-
-| Release | Model | Benchmark | Result |
-|---|---|---|---|
-| [**v0.0.2**](https://github.com/itayinbarr/little-coder/releases/tag/v0.0.2) (commit `1d62bde`) — the paper | Qwen3.5-9B via Ollama | Aider Polyglot (225 exercises) | **45.56 %** mean of two runs; matched-model vanilla Aider baseline 19.11 %. Paper: [*Honey, I Shrunk the Coding Agent* on Substack](https://open.substack.com/pub/itayinbarr/p/honey-i-shrunk-the-coding-agent). |
-| [**v0.0.5**](https://github.com/itayinbarr/little-coder/releases/tag/v0.0.5) — pre-pi Python | Qwen3.6-35B-A3B via llama.cpp | Aider Polyglot | **78.67 %**. [Full narrative](docs/benchmark-qwen3.6-35b-a3b.md). |
-| [**v0.1.4**](https://github.com/itayinbarr/little-coder/releases/tag/v0.1.4) — on pi | Qwen3.6-35B-A3B via llama.cpp | Terminal-Bench-Core v0.1.1 (80 tasks) | **40.0 %** in 6 h 50 min. [Write-up](docs/benchmark-terminal-bench-v0.1.1.md). |
-| [**v0.1.13**](https://github.com/itayinbarr/little-coder/releases/tag/v0.1.13) — on pi, TB 2.0 leaderboard | Qwen3.6-35B-A3B via llama.cpp | Terminal-Bench 2.0 (89 tasks × 5 trials = 445) | **24.6 % ± 3.2** — accepted to the [Terminal-Bench 2.0 leaderboard](https://www.tbench.ai/leaderboard/terminal-bench/2.0) (rank 120). |
-| [**v0.1.24**](https://github.com/itayinbarr/little-coder/releases/tag/v0.1.24) — on pi, TB 2.0 leaderboard, smaller model | Qwen3.5-9B (Q4_K_M) via llama.cpp (5.3 GB on GPU, 2× faster per-token than the 35B-A3B) | Terminal-Bench 2.0 (89 tasks × 5 trials = 445) | **9.2 % ± 2.4** — accepted to the [Terminal-Bench 2.0 leaderboard](https://www.tbench.ai/leaderboard/terminal-bench/2.0) (rank 142). |
-| [**v0.1.27**](https://github.com/itayinbarr/little-coder/releases/tag/v0.1.27) — on pi, GAIA validation | Qwen3.6-35B-A3B via llama.cpp | GAIA validation set (165 tasks) | **40.00 %** (66 / 165). L1 60.4 % / L2 37.2 % / L3 7.7 %. Test-split run pending. |
-
-All runs used a consumer laptop: i9-14900HX, 32 GB RAM, **8 GB VRAM** on RTX 5070 Laptop (Blackwell). No cloud inference at any point.
-
----
-
-## Roadmap
-
-**Phase 1 — wide benchmark baseline: complete.** The paper established that scaffold–model fit moves a 9.7 B model from 19 % to 45 % on Aider Polyglot, and the goal of Phase 1 was to find out how wide that impact radius is. We now have a four-benchmark baseline on a single laptop-class GPU:
-
-1. **Aider Polyglot** — 45.56 % (paper, Qwen3.5-9B) and 78.67 % (v0.0.5, Qwen3.6-35B-A3B).
-2. **Terminal-Bench-Core v0.1.1** — 40.0 % (v0.1.4).
-3. **Terminal-Bench 2.0** — accepted to the [official leaderboard](https://www.tbench.ai/leaderboard/terminal-bench/2.0): Qwen3.6-35B-A3B at **24.6 % ± 3.2** (rank 120) and Qwen3.5-9B at **9.2 % ± 2.4** (rank 142). The v0.1.24 prompt-repetition fix (re-add tool descriptions + concision guideline, validated by a 4 / 4 pilot on the previously-regressing `prove-plus-comm` task) was the prompt for both submissions.
-4. **GAIA** — validation set at v0.1.27: **40.00 %** (66 / 165) on Qwen3.6-35B-A3B. Per-level L1 60.4 % / L2 37.2 % / L3 7.7 %.
-
-That spans short coding exercises (Polyglot), interactive shell-bound tasks (Terminal-Bench), and tool-using research (GAIA), all on the same scaffold. The data needed to choose what to fix next is now in hand.
-
-**Phase 2 — iterative improvement on real-world tasks: starting now.** The motivating question shifts from *how wide is the impact radius?* to *which scaffolding changes compound on long-horizon real work?* The signal we have already points at concrete things to try — thinking-budget / quality-monitor behavior on long-horizon tasks, deliberate.py-style parallel branches on failure, better shell-session recovery for interactive-process traps, evidence-handling on multi-document GAIA L3 tasks — but the priority order comes from real-world use, not from a benchmark suite. Expect smaller, more frequent releases driven by what little-coder actually struggles with on day-to-day coding work.
-
-**Future benchmarks (deferred).** New benchmarks like **ProgramBench**, SWE-bench Verified (multi-file real-world patches), and a GAIA test-split run come back into scope after Phase 2 has produced enough scaffolding signal to make a fresh measurement worth running. Re-benchmarking before the next round of changes lands would mostly re-measure the same baseline.
-
----
-
 ## Troubleshooting
 
-**`little-coder: command not found`** — npm's global bin directory isn't on your PATH. Run `npm config get prefix` to see where it installed; add `<prefix>/bin` to your PATH. Or reinstall with `sudo` if your prefix needs root.
+**Containers don't start / `.env` error** — make sure you ran `cp infra/.env.example infra/.env` and replaced the placeholder key. `start.sh` exits with an error if the placeholder is still present.
 
-**`ECONNREFUSED 127.0.0.1:8888`** — llama.cpp isn't running. Start `llama-server` first, or switch `--model` to an Ollama/cloud ID.
+**`ECONNREFUSED` to the inference server** — the llama-server (or Ollama/LM Studio) isn't running, or the `LLAMACPP_BASE_URL` points at the wrong host. Inside Docker, use `host.docker.internal` instead of `127.0.0.1` to reach processes on the host (the compose file sets this automatically via `extra_hosts`).
 
-**LAN client times out (no `RST`, just hangs)** — the inference box's firewall is dropping the SYN. The usual cause is `ufw` with a default-deny policy that allow-lists only SSH / a few dev ports. From the server: `sudo ufw status verbose` to confirm; `sudo ufw allow from <your-lan-subnet>/24 to any port 8888 proto tcp` to fix (scoped to the LAN so you're not exposing the box). Docker-published ports bypass `ufw` via `PREROUTING` NAT, which is why a Docker container can be reachable while a plain `llama-server` on the same host isn't.
+**`git clone` fails inside the agent** — check that `infra/git/credentials` exists and contains a valid PAT entry for the repo's host. The file is bind-mounted read-only; any edit on the host is immediately visible inside the container.
 
-**Image attachment is accepted but the request returns 4xx** — your llama-server is running without a vision projector. Re-launch it with `--mmproj ~/models/mmproj-F16.gguf` (or another mmproj variant from the same GGUF repo). The `--list-models` `images` column reflects what the client *will attempt to send*, not what the server can answer; the projector is what gives the model eyes.
+**No API key env var warning** — pi requires _some_ value even for local providers. Set `LLAMACPP_API_KEY=noop` in `infra/.env` (the template already includes it).
 
-**No API key env var warning** — pi expects *some* key even for local providers. Export `LLAMACPP_API_KEY=noop` (or `OLLAMA_API_KEY=noop`) before launching.
+**Extension load failures on startup** — run `docker exec -it little-coder little-coder --list-models --verbose`; extension errors surface there. If the image looks corrupt, run `bash infra/wipe-hard.sh` to rebuild from scratch.
 
-**No pi "Update Available" banner** — that's intentional. little-coder defaults `PI_SKIP_VERSION_CHECK=1` so the bundled pi runtime doesn't nag about updating itself; little-coder pins pi to a known-good version per release. If you actually want the banner back, `export PI_SKIP_VERSION_CHECK=0` before launching.
-
-**Extension load failures on startup** — run `little-coder --list-models --verbose`; extension errors surface there. If the install looks corrupt: `npm uninstall -g little-coder && npm install -g little-coder`.
-
-**Node version too old** — little-coder needs Node ≥ 22.19.0 (matching the minimum of the bundled `@earendil-works/pi-coding-agent` v0.75+). Check with `node --version`. Easiest fix: `nvm install 22 && nvm use 22`.
-
----
-
-## Developing little-coder locally
-
-If you want to hack on the extensions or skills:
-
-```bash
-git clone https://github.com/itayinbarr/little-coder.git
-cd little-coder
-npm install
-npm link            # makes the local checkout available as `little-coder`
-little-coder --model llamacpp/qwen3.6-35b-a3b
-```
-
-To unlink: `npm unlink -g little-coder`.
-
-The benchmarks harness (`benchmarks/`) is dev-only and not shipped with the npm package. Run it from a clone with `python3 benchmarks/aider_polyglot.py …` etc.
+**Node version too old (outside Docker)** — little-coder requires Node ≥ 22.19.0. Check with `node --version`; upgrade with `nvm install 22 && nvm use 22`.
 
 ---
 
 ## Architecture
 
-```
+````
 little-coder/
 ├── .pi/
 │   ├── settings.json               # per-model profiles + benchmark_overrides (terminal_bench, gaia)
@@ -328,48 +352,9 @@ little-coder/
 └── docs/
     ├── benchmark-*.md              # per-benchmark narratives
     └── architecture.md             # v0.0.5-era Python architecture (historical)
-```
+````
 
 **Key invariant.** pi is a minimal base by design. Every little-coder mechanism ships as a pi extension that hooks pi's lifecycle events (`before_agent_start`, `context`, `before_provider_request`, `tool_call`, `tool_result`, `turn_end`, `session_compact`). Extensions are independent and can be enabled/disabled per deployment via `.pi/settings.json`. If you don't want one, delete its directory or disable it in settings; if you want to add another, drop it next to the existing ones.
-
----
-
-## Reproducing the paper (v0.0.2)
-
-```bash
-git clone https://github.com/itayinbarr/little-coder.git
-cd little-coder
-git checkout v0.0.2
-# Follow that version's README for its Python setup (pip install -e .)
-```
-
-The paper ran `ollama/qwen3.5` through the Python little-coder at commit **`1d62bde`** (tag [`v0.0.2`](https://github.com/itayinbarr/little-coder/releases/tag/v0.0.2)). The 45.56 % mean figure is the average of two full 225-exercise runs on that exact codebase. For the 78.67 % headline, check out tag [`v0.0.5`](https://github.com/itayinbarr/little-coder/releases/tag/v0.0.5) — both are pre-pi Python and follow the pre-pi setup.
-
----
-
-## Citation
-
-```bibtex
-@misc{inbar2026littlecoder,
-  title        = {little-coder: A Coding Agent Optimized for Small Local Language Models},
-  subtitle     = {Architectural Adaptation Lets a 9.7B Model Outperform Frontier Models on Aider Polyglot},
-  author       = {Inbar, Itay},
-  year         = {2026},
-  month        = apr,
-  howpublished = {\url{https://open.substack.com/pub/itayinbarr/p/honey-i-shrunk-the-coding-agent}},
-  note         = {White paper}
-}
-```
-
----
-
-## Attribution
-
-little-coder v0.0.x was a derivative work of [CheetahClaws / ClawSpring](https://github.com/SafeRL-Lab/clawspring) by SafeRL-Lab, Apache 2.0. That upstream provided the Python agent substrate, tool system, multi-provider support, and REPL.
-
-little-coder v0.1.0+ replaces that substrate with **[pi](https://pi.dev)** by Mario Zechner — Apache 2.0 / MIT. The npm package was renamed from `@mariozechner/pi-coding-agent` to `@earendil-works/pi-coding-agent` in upstream's 0.74 release; little-coder v1.4.2+ ships with the new package. pi provides the agent loop, provider abstraction, TUI, and extension model. little-coder rebuilds its small-model adaptations on top of pi as extensions.
-
-All little-coder-specific mechanisms — Write-vs-Edit invariant, skill / knowledge injection, thinking-budget cap, output-parser, quality-monitor, per-model profiles, per-benchmark overrides, ShellSession / Browser / Evidence tool families, evidence-aware compaction — are preserved across versions.
 
 ---
 

@@ -122,7 +122,7 @@ export default function (pi: ExtensionAPI) {
       "Supports chaining (&&, ||, ;), pipes (|), redirections. Returns stdout, stderr, exit_code.",
     parameters: Type.Object({
       command: Type.String({ description: "Shell command to execute." }),
-      cwd: Type.Optional(Type.String({ description: "Working directory (default: /home/user)." })),
+      cwd: Type.Optional(Type.String({ description: "Working directory (default: /home/user/projects)." })),
       timeout: Type.Optional(
         Type.Integer({ description: "Seconds to wait for completion (default 30)." }),
       ),
@@ -130,8 +130,12 @@ export default function (pi: ExtensionAPI) {
     async execute(_id, { command, cwd, timeout }) {
       if (!command || typeof command !== "string") return errorResult("Error: command is required");
       const wait = typeof timeout === "number" && timeout > 0 ? timeout : 30;
-      // Default cwd to /home/user — the server's own /app dir is owned by root (no write access).
-      const body: Record<string, unknown> = { command, cwd: cwd || "/home/user" };
+      // Default cwd to /home/user/projects — the server's own /app dir is owned by root
+      // (no write access), and /home/user/projects is what infra/wipe-soft.sh cleans.
+      // mkdir -p ensures it exists on first call (no-op afterwards).
+      const targetCwd = cwd || "/home/user/projects";
+      const wrapped = cwd ? command : `mkdir -p /home/user/projects && cd /home/user/projects && ${command}`;
+      const body: Record<string, unknown> = { command: wrapped, cwd: cwd ? targetCwd : "/home/user" };
       try {
         const res: any = await otFetch(`/execute?wait=${wait}`, {
           method: "POST",

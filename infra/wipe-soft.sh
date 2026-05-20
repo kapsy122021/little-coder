@@ -14,7 +14,7 @@ if ! docker ps --filter "name=$CONTAINER_NAME" --format "{{.Names}}" | grep -q "
 fi
 
 echo "🧹 Performing soft wipe: clearing project workspace..."
-docker exec -it "$CONTAINER_NAME" sh -lc 'rm -rf /home/user/projects/* && echo "✅ Workspace cleared"'
+docker exec -i "$CONTAINER_NAME" sh -lc 'rm -rf /home/user/projects && mkdir -p /home/user/projects && echo "✅ Workspace cleared"'
 
 echo ""
 echo "✅ Soft wipe complete. Tools and caches preserved."

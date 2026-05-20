@@ -38,6 +38,13 @@ services:
     environment:
       OPEN_TERMINAL_API_KEY: ${OPEN_TERMINAL_API_KEY}
       OPEN_TERMINAL_MULTI_USER: "false"
+    volumes:
+      # Persistent git credential vault — survives wipe-soft AND wipe-hard
+      # because the files live on the host. Add/remove tokens by editing
+      # infra/git/credentials on the host; changes take effect immediately
+      # (no container restart needed). See infra/git/credentials.example.
+      - ./git/gitconfig:/home/user/.gitconfig:ro
+      - ./git/credentials:/home/user/.git-credentials:ro
     networks:
       - little-coder-net
     pids_limit: 256

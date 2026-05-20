@@ -14,7 +14,10 @@ if ! docker ps --filter "name=$CONTAINER_NAME" --format "{{.Names}}" | grep -q "
 fi
 
 echo "🧹 Performing soft wipe: clearing project workspace..."
-docker exec -i "$CONTAINER_NAME" sh -lc 'rm -rf /home/user/projects && mkdir -p /home/user/projects && echo "✅ Workspace cleared"'
+# Run as root so we can rm regardless of who created files, then hand ownership
+# back to user so subsequent OTBash calls (which run as user) can write.
+docker exec -i -u root "$CONTAINER_NAME" sh -lc \
+  'rm -rf /home/user/projects && mkdir -p /home/user/projects && chown user:user /home/user/projects && echo "✅ Workspace cleared"'
 
 echo ""
 echo "✅ Soft wipe complete. Tools and caches preserved."

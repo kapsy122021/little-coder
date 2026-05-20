@@ -1,0 +1,12 @@
+# Bind-mounted into open-terminal as /home/user/.gitconfig.
+# Configures git to use the credentials file (also bind-mounted) so any
+# `git clone https://github.com/owner/repo.git` issued by the agent
+# automatically authenticates against the right token — no env vars,
+# no per-session flags, survives all wipes.
+[credential]
+	helper = store --file=/home/user/.git-credentials
+	useHttpPath = true
+[init]
+	defaultBranch = main
+[safe]
+	directory = *

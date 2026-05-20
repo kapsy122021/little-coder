@@ -154,6 +154,20 @@ The agent clones into `/home/user/projects/` inside the open-terminal container.
 | `docker exec -it open-terminal bash`                 | Drop into a shell inside the terminal container                             |
 | `little-coder --list-models`                         | List every registered model (run from inside the container or on the host)  |
 
+**llama-swap model management** (runs against the host inference proxy at `http://127.0.0.1:8000`):
+
+### UNLOAD - first cd to the llama-swap directory
+
+cd C:\Users\Kaps\Documents\projects_git\little-coder
+
+| Command                                                            | What it does                            |
+| ------------------------------------------------------------------ | --------------------------------------- |
+| `curl http://127.0.0.1:8000/running`                               | List models currently loaded in memory  |
+| `curl -X POST http://127.0.0.1:8000/api/models/unload`             | Unload all running models and free VRAM |
+| `curl -X POST http://127.0.0.1:8000/api/models/unload/qwen3.6:27b` | Unload a specific model by ID           |
+| `curl http://127.0.0.1:8000/logs`                                  | Dump buffered proxy + upstream logs     |
+| `curl -Ns http://127.0.0.1:8000/logs/stream`                       | Stream live logs from all processes     |
+
 ### Wipe strategies
 
 After finishing a project, choose a wipe level:

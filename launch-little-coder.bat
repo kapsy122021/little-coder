@@ -1,12 +1,6 @@
 @echo off
 setlocal
 
-if /i not "%~1"=="--run" (
-  start "little-coder" cmd /k call "%~f0" --run %*
-  exit /b 0
-)
-shift
-
 set "MODEL=%~1"
 if "%MODEL%"=="" set "MODEL=llamacpp/qwen3.6:27b"
 

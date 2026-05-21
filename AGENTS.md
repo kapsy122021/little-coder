@@ -82,6 +82,7 @@ Each file is YAML frontmatter + body. Minimal tool-skill example:
 target_tool: Edit
 token_cost: 120
 ---
+
 Match `old_string` exactly, including indentation. Read the file with line numbers first when in doubt.
 ```
 
@@ -94,6 +95,7 @@ keywords: [binary, search, sorted, lower bound, upper bound]
 token_cost: 140
 requires_tools: []
 ---
+
 Half-open interval `[lo, hi)`; loop `while lo < hi`; `mid = lo + (hi-lo)/2` to avoid overflow.
 ```
 

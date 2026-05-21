@@ -1,9 +1,32 @@
 ---
 topic: solid_principles
-keywords: [solid, srp, ocp, lsp, isp, dip, design, principle, single, responsibility, open, closed, liskov, interface, segregation, dependency, inversion, refactor, class, architecture]
+keywords:
+  [
+    solid,
+    srp,
+    ocp,
+    lsp,
+    isp,
+    dip,
+    design,
+    principle,
+    single,
+    responsibility,
+    open,
+    closed,
+    liskov,
+    interface,
+    segregation,
+    dependency,
+    inversion,
+    refactor,
+    class,
+    architecture,
+  ]
 token_cost: 150
 requires_tools: []
 ---
+
 SOLID, applied at the unit you are actually writing — usually a class or module:
 
 - **S — Single Responsibility.** One reason to change. If the class name has "And" or "Manager" with three nouns, split it.

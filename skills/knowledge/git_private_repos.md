@@ -1,12 +1,33 @@
 ---
 topic: git_private_repos
-keywords: [private, repo, repository, clone, authentication, auth, credentials, token, pat, 401, 403, forbidden, unauthorized, github, gitlab, push, permission]
+keywords:
+  [
+    private,
+    repo,
+    repository,
+    clone,
+    authentication,
+    auth,
+    credentials,
+    token,
+    pat,
+    401,
+    403,
+    forbidden,
+    unauthorized,
+    github,
+    gitlab,
+    push,
+    permission,
+  ]
 token_cost: 150
 requires_tools: [ShellSession]
 ---
+
 Private-repo authentication inside open-terminal is handled by a bind-mounted credential store at `/home/user/.git-credentials` plus a pre-configured `credential.helper=store` in `/home/user/.gitconfig`. Both are read-only mounts owned by the host.
 
 Workflow:
+
 - Always clone with the plain HTTPS URL: `git clone https://github.com/<owner>/<repo>.git`. The helper picks the right token for that host/path automatically.
 - Never embed a token in the URL or in `.git/config` — it leaks into history and is rejected by `push.useForceIfIncludes`.
 - Never `export GITHUB_TOKEN=...` — the helper is the single source of truth.

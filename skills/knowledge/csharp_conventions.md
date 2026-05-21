@@ -1,9 +1,29 @@
 ---
 topic: csharp_conventions
-keywords: [csharp, c#, dotnet, .net, microsoft, convention, style, naming, pascalcase, camelcase, namespace, async, await, property, field, interface, nullable]
+keywords:
+  [
+    csharp,
+    c#,
+    dotnet,
+    .net,
+    microsoft,
+    convention,
+    style,
+    naming,
+    pascalcase,
+    camelcase,
+    namespace,
+    async,
+    await,
+    property,
+    field,
+    interface,
+    nullable,
+  ]
 token_cost: 150
 requires_tools: []
 ---
+
 Microsoft C# conventions (apply by default unless the repo's `.editorconfig` says otherwise):
 
 - **Naming.** `PascalCase` for types, methods, properties, events, public/internal fields, constants. `camelCase` for parameters and locals. `_camelCase` for private instance fields. `I`-prefix for interfaces (`IRepository`). `T`-prefix for generic type params (`TItem`).

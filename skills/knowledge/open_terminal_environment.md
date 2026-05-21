@@ -1,9 +1,26 @@
 ---
 topic: open_terminal_environment
-keywords: [container, open-terminal, openterminal, workspace, environment, filesystem, persistence, ephemeral, projects, home, mount, docker, shell, session]
+keywords:
+  [
+    container,
+    open-terminal,
+    openterminal,
+    workspace,
+    environment,
+    filesystem,
+    persistence,
+    ephemeral,
+    projects,
+    home,
+    mount,
+    docker,
+    shell,
+    session,
+  ]
 token_cost: 150
 requires_tools: [ShellSession]
 ---
+
 You execute inside the `open-terminal` container, reached over HTTP by the `little-coder` container. Implications:
 
 - Working dir is `/home/user/`. Persist work under `/home/user/projects/<name>/` — that is where the user expects to find clones and outputs.

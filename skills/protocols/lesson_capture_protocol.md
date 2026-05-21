@@ -1,22 +1,40 @@
 ---
 topic: lesson_capture_protocol
-keywords: [lesson, capture, retrospective, learn, journal, write, after, finish, complete, done, postmortem, takeaway, accumulate, skill]
+keywords:
+  [
+    lesson,
+    capture,
+    retrospective,
+    learn,
+    journal,
+    write,
+    after,
+    finish,
+    complete,
+    done,
+    postmortem,
+    takeaway,
+    accumulate,
+    skill,
+  ]
 token_cost: 150
 requires_tools: [Write, Edit, Glob]
 ---
+
 ## Lesson-capture protocol
 
 After completing a non-trivial task, before declaring done, spend one round turning the experience into a durable artefact. Future-you (and future-other-agents) reads it instead of re-deriving.
 
 Decide what to write based on generality:
 
-| Scope                        | Where                                            | Form                |
-|------------------------------|--------------------------------------------------|---------------------|
-| This task only               | `<repo>/.little-coder/journal/YYYY-MM-DD-<slug>.md` | Journal entry       |
-| Recurs in this repo          | `<repo>/.little-coder/skills/knowledge/<topic>.md`  | Project skill       |
-| Recurs across every repo     | (propose to the user) `<pkgRoot>/skills/...`     | Bundled skill PR    |
+| Scope                    | Where                                               | Form             |
+| ------------------------ | --------------------------------------------------- | ---------------- |
+| This task only           | `<repo>/.little-coder/journal/YYYY-MM-DD-<slug>.md` | Journal entry    |
+| Recurs in this repo      | `<repo>/.little-coder/skills/knowledge/<topic>.md`  | Project skill    |
+| Recurs across every repo | (propose to the user) `<pkgRoot>/skills/...`        | Bundled skill PR |
 
 Journal entry template (keep it under ~15 lines):
+
 ```
 ---
 date: YYYY-MM-DD
@@ -31,6 +49,7 @@ outcome: success | partial | abandoned
 ```
 
 Triggers — write something if ANY of these are true:
+
 - You spent >5 tool calls discovering a single fact.
 - You hit an error whose fix was non-obvious from the message.
 - The user corrected you mid-task — capture the correction.

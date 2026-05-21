@@ -1,9 +1,28 @@
 ---
 topic: unity_conventions
-keywords: [unity, monobehaviour, gameobject, scriptableobject, serializefield, prefab, unity3d, component, coroutine, awake, start, update, fixedupdate, asmdef, editor, inspector]
+keywords:
+  [
+    unity,
+    monobehaviour,
+    gameobject,
+    scriptableobject,
+    serializefield,
+    prefab,
+    unity3d,
+    component,
+    coroutine,
+    awake,
+    start,
+    update,
+    fixedupdate,
+    asmdef,
+    editor,
+    inspector,
+  ]
 token_cost: 150
 requires_tools: []
 ---
+
 Unity overrides plain C# conventions where they conflict. Apply these when the project contains Unity assets, `*.asmdef` files, or `using UnityEngine;`:
 
 - **Naming.** Still `PascalCase` for types and methods, but inspector-visible private fields use `[SerializeField] private` with a `camelCase` (no `_` prefix) so the inspector label reads naturally. Public fields are tolerated on `MonoBehaviour`/`ScriptableObject` for inspector-bound data, but prefer `[SerializeField] private` + a public read-only property.

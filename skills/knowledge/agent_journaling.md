@@ -1,9 +1,29 @@
 ---
 topic: agent_journaling
-keywords: [journal, journaling, memory, notes, log, history, anthropic, agent, learn, lesson, retrospective, knowledge, accumulate, sustainable, context, save, persistent]
+keywords:
+  [
+    journal,
+    journaling,
+    memory,
+    notes,
+    log,
+    history,
+    anthropic,
+    agent,
+    learn,
+    lesson,
+    retrospective,
+    knowledge,
+    accumulate,
+    sustainable,
+    context,
+    save,
+    persistent,
+  ]
 token_cost: 150
 requires_tools: [Read, Write, Edit, Glob]
 ---
+
 Anthropic-style agentic journaling: durable, per-workspace notes that let future-you skip work you already did. Cheaper than re-deriving from context every session.
 
 Layout (per-project, lives in the repo so it survives `wipe-soft`):
@@ -18,9 +38,10 @@ Layout (per-project, lives in the repo so it survives `wipe-soft`):
     └── tools/<tool>.md
 ```
 
-Each journal entry: ~10 lines max. Frontmatter `date`, `task`, `outcome`. Body: *Problem*, *Approach that worked*, *What I tried first and why it failed*, *Files touched*, *Follow-ups*.
+Each journal entry: ~10 lines max. Frontmatter `date`, `task`, `outcome`. Body: _Problem_, _Approach that worked_, _What I tried first and why it failed_, _Files touched_, _Follow-ups_.
 
 When to write what:
+
 - **Journal entry** for a one-off solved problem (a flaky test, a config quirk, a non-obvious refactor).
 - **Project skill** (`<repo>/.little-coder/skills/...`) when the lesson generalises beyond this task within this repo.
 - **Bundled skill** (`<pkgRoot>/skills/...`, requires the user to commit + rebuild) when the lesson generalises across every repo little-coder touches.

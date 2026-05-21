@@ -1,9 +1,29 @@
 ---
 topic: git_workflow
-keywords: [git, clone, branch, commit, push, pull, merge, rebase, repo, repository, checkout, fetch, origin, remote, status, diff, log]
+keywords:
+  [
+    git,
+    clone,
+    branch,
+    commit,
+    push,
+    pull,
+    merge,
+    rebase,
+    repo,
+    repository,
+    checkout,
+    fetch,
+    origin,
+    remote,
+    status,
+    diff,
+    log,
+  ]
 token_cost: 150
 requires_tools: [ShellSession]
 ---
+
 Standard git loop inside open-terminal:
 
 1. `git status` before every change — know what's dirty.

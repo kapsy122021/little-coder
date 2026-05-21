@@ -38,3 +38,5 @@ __pycache__/
 *.log
 debug_payload.json
 brainstorm_outputs/
+.vscode/settings.json
+/.vscode

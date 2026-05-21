@@ -1,5 +1,6 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { readdirSync, readFileSync, existsSync } from "node:fs";
+import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseSkillFile } from "./frontmatter.ts";
@@ -58,27 +59,40 @@ const INTENT_MAP: Record<string, string[]> = {
   click: ["BrowserClick"],
 };
 
-function skillsDir(): string {
+// Skill-source roots scanned at load time, in increasing precedence:
+//   1. Bundled  — <pkgRoot>/skills/tools/      (ships with little-coder)
+//   2. User     — <homedir>/.little-coder/skills/tools/
+//   3. Project  — <cwd>/.little-coder/skills/tools/
+// Later roots overwrite earlier ones on the same target_tool key, so a
+// project skill beats a user skill which beats the bundled default.
+// This lets the agent author skills with Write into a directory that
+// actually exists in a writable location (npm-global installs make the
+// bundled dir read-only), without losing the bundled defaults.
+function skillsDirs(): string[] {
   // Extension lives at .pi/extensions/skill-inject/, repo root is 3 levels up
   const here = dirname(fileURLToPath(import.meta.url));
-  return join(here, "..", "..", "..", "skills", "tools");
+  const bundled = join(here, "..", "..", "..", "skills", "tools");
+  const userScope = join(homedir(), ".little-coder", "skills", "tools");
+  const projectScope = join(process.cwd(), ".little-coder", "skills", "tools");
+  return [bundled, userScope, projectScope];
 }
 
 function loadSkills(): void {
   if (loaded) return;
   loaded = true;
-  const dir = skillsDir();
-  if (!existsSync(dir)) return;
-  for (const file of readdirSync(dir)) {
-    if (!file.endsWith(".md")) continue;
-    const parsed = parseSkillFile(readFileSync(join(dir, file), "utf-8"));
-    if (!parsed) continue;
-    const target = parsed.frontmatter.target_tool;
-    if (typeof target !== "string" || !target) continue;
-    const cost = typeof parsed.frontmatter.token_cost === "number"
-      ? parsed.frontmatter.token_cost
-      : 150;
-    skills.set(target, { targetTool: target, body: parsed.body, tokenCost: cost });
+  for (const dir of skillsDirs()) {
+    if (!existsSync(dir)) continue;
+    for (const file of readdirSync(dir)) {
+      if (!file.endsWith(".md")) continue;
+      const parsed = parseSkillFile(readFileSync(join(dir, file), "utf-8"));
+      if (!parsed) continue;
+      const target = parsed.frontmatter.target_tool;
+      if (typeof target !== "string" || !target) continue;
+      const cost = typeof parsed.frontmatter.token_cost === "number"
+        ? parsed.frontmatter.token_cost
+        : 150;
+      skills.set(target, { targetTool: target, body: parsed.body, tokenCost: cost });
+    }
   }
 }
 

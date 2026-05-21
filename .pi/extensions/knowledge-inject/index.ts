@@ -1,5 +1,6 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { readdirSync, readFileSync, existsSync } from "node:fs";
+import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseSkillFile } from "../skill-inject/frontmatter.ts";
@@ -25,10 +26,25 @@ let loaded = false;
 const MIN_SCORE_THRESHOLD = 2.0;
 const PER_ENTRY_CAP = 150;
 
+// Knowledge/protocol roots scanned at load time, in increasing precedence:
+//   1. Bundled  — <pkgRoot>/skills/{knowledge,protocols}/
+//   2. User     — <homedir>/.little-coder/skills/{knowledge,protocols}/
+//   3. Project  — <cwd>/.little-coder/skills/{knowledge,protocols}/
+// Later roots overwrite earlier ones on the same topic key, mirroring
+// skill-inject's layout so authored skills end up in the same place.
 function dirs(): string[] {
   const here = dirname(fileURLToPath(import.meta.url));
   const repo = join(here, "..", "..", "..");
-  return [join(repo, "skills", "knowledge"), join(repo, "skills", "protocols")];
+  const user = join(homedir(), ".little-coder");
+  const project = join(process.cwd(), ".little-coder");
+  return [
+    join(repo, "skills", "knowledge"),
+    join(repo, "skills", "protocols"),
+    join(user, "skills", "knowledge"),
+    join(user, "skills", "protocols"),
+    join(project, "skills", "knowledge"),
+    join(project, "skills", "protocols"),
+  ];
 }
 
 function loadEntries(): void {

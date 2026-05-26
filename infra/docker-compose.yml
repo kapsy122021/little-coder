@@ -15,7 +15,7 @@ services:
       # --- Lock model provider to llama-ingress-proxy on the host ---
       # docker.models.json declares only qwen3.6:27b and qwen3.6:27b-nothink.
       LITTLE_CODER_MODELS_FILE: /app/docker.models.json
-      LLAMACPP_BASE_URL: http://host.docker.internal:8000/v1
+      LLAMACPP_BASE_URL: ${LLAMACPP_BASE_URL:-http://host.docker.internal:8000/v1}
       LLAMACPP_API_KEY: ${LLAMACPP_API_KEY:-noop}
     extra_hosts:
       # Required so `host.docker.internal` resolves on Linux engines;
